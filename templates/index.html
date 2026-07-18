@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Причинно-следственная канва</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #f0f2f5;
+            user-select: none;
+        }
+        h1 { margin: 12px 0 5px; color: #2c3e50; font-weight: 300; }
+        canvas {
+    border: 1px solid #ccc;
+    cursor: default;
+    background: white;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    border-radius: 8px;
+    touch-action: none;
+    /* 👇 НОВЫЕ СВОЙСТВА ДЛЯ 3D-ЭФФЕКТА */
+    transform: perspective(800px) rotateX(2deg);
+    transform-style: preserve-3d;
+    transition: transform 0.2s ease;
+}   
+        #controls {
+            margin: 12px 0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            align-items: center;
+            background: white;
+            padding: 10px 20px;
+            border-radius: 12px;
+            box-shadow: 0 1px 6px rgba(0,0,0,0.1);
+        }
+        #controls select { padding: 6px; border-radius: 4px; border: 1px solid #ccc; }
+        button {
+            padding: 6px 14px;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        button:hover { transform: scale(1.02); opacity: 0.9; }
+        .btn-blue { background: #3498db; color: white; }
+        .btn-green { background: #27ae60; color: white; }
+        .btn-purple { background: #8e44ad; color: white; }
+        .btn-orange { background: #e67e22; color: white; }
+        .btn-red { background: #e74c3c; color: white; }
+        .btn-teal { background: #1abc9c; color: white; }
+        .btn-gray { background: #95a5a6; color: white; }
+        #status { font-weight: 600; color: #2c3e50; margin-left: 10px; }
+        #info {
+            margin: 6px 0 16px;
+            color: #555;
+            font-size: 14px;
+            background: #fff;
+            padding: 6px 18px;
+            border-radius: 20px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 10000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(4px);
+            justify-content: center;
+            align-items: center;
+            animation: fadeIn 0.3s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .modal-content {
+            background: white;
+            padding: 30px 40px;
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            text-align: left;
+            min-width: 350px;
+            max-width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .modal-content h3 { margin-top: 0; color: #2c3e50; font-size: 22px; font-weight: 500; text-align: center; }
+        .modal-content label { display: block; margin: 12px 0 4px; font-weight: 500; color: #333; }
+        .modal-content input, .modal-content select {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        .modal-content input:focus, .modal-content select:focus {
+            border-color: #3498db;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(52,152,219,0.3);
+        }
+        .modal-content .section { margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee; }
+        .modal-actions { display: flex; gap: 12px; justify-content: center; margin-top: 25px; }
+        .modal-actions button { padding: 10px 28px; font-size: 16px; border-radius: 8px; }
+        .hint-text { font-size: 13px; color: #777; margin-top: 4px; }
+        #formulaField { display: none; }
+        #scenario-block {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: center;
+            align-items: center;
+            background: #f8f9fa;
+            padding: 8px 16px;
+            border-radius: 8px;
+            margin: 4px 0 8px;
+            border: 1px solid #e0e0e0;
+        }
+        #scenario-block label {
+            font-weight: 500;
+            color: #555;
+            margin-right: 4px;
+        }
+        #scenario-block select {
+            padding: 5px 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        #scenario-block input[type="file"] { display: none; }
+        #columnCheckboxes label {
+            display: inline-block;
+            margin-right: 15px;
+            font-weight: normal;
+        }
+        #columnCheckboxes input[type="checkbox"] {
+            width: auto;
+            margin-right: 5px;
+        }
+        /* Спиннер для загрузки */
+.spinner {
+    border: 4px solid rgba(255,255,255,0.3);
+    border-top: 4px solid #3498db;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    animation: spin 1s linear infinite;
+}
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+#loadingOverlay p {
+    margin: 5px 0;
+}
+    </style>
+</head>
+<body>
+    <h1>🧠 Причинно-следственная канва</h1>
+
+    <!-- Основные элементы управления -->
+    <div id="controls">
+        <button id="modeToggle" class="btn-purple">🔁 Режим: Симуляция</button>
+        <button id="addNodeBtn" class="btn-blue" style="display:none;">➕ Добавить узел</button>
+        <button id="addEdgeBtn" class="btn-teal" style="display:none;">➕ Добавить связь</button>
+        <button id="uploadCsvBtn" class="btn-teal">📁 Загрузить CSV</button>
+        <input type="file" id="csvFileInput" accept=".csv" style="display:none;">
+        <button id="resetBtn" class="btn-orange">🔄 Сбросить значения</button>
+        <button id="acceptBtn" class="btn-green">✅ Принять изменения</button>
+        <span id="status">⚡ Режим: симуляция</span>
+    </div>
+
+    <!-- Блок сценариев -->
+    <div id="scenario-block">
+        <label>📂 Сценарии:</label>
+        <select id="scenarioSelect">
+            <option value="">-- Выберите --</option>
+        </select>
+        <button id="loadScenarioBtn" class="btn-green">📥 Загрузить</button>
+        <button id="saveScenarioBtn" class="btn-blue">💾 Сохранить как...</button>
+        <button id="deleteScenarioBtn" class="btn-red">🗑️ Удалить</button>
+        <button id="exportScenarioBtn" class="btn-orange">📤 Экспорт</button>
+        <button id="importScenarioBtn" class="btn-teal">📥 Импорт</button>
+        <input type="file" id="importFileInput" accept=".json">
+    </div>
+
+    <canvas id="canvas" width="1000" height="600"></canvas>
+    <div id="info">🖱️ Перетащите узел · Двойной клик по узлу → настройки, по ребру → вес · Пробел + перетаскивание для панорамирования · Колёсико для зума · Клик по узлу → показать цепочку</div>
+
+    <!-- Модалка редактирования узла -->
+    <div id="editNodeModal" class="modal">
+        <div class="modal-content">
+            <h3 id="modalTitle">✏️ Настройки узла</h3>
+            <div class="section">
+                <label>Имя узла</label>
+                <input type="text" id="modalNodeName" value="Узел">
+                <label>Цвет</label>
+                <input type="color" id="modalNodeColor" value="#3498db">
+            </div>
+            <div class="section" id="valueSection">
+                <label>Новое значение (оставьте пустым, чтобы не менять)</label>
+                <input type="number" id="modalNodeValue" step="0.1" placeholder="например 25">
+                <div class="hint-text">Изменение значения запустит каскадный пересчёт</div>
+            </div>
+            <div class="section">
+                <label>Закон трансформации</label>
+                <select id="modalTransformType">
+                    <option value="linear">Линейный (x)</option>
+                    <option value="quadratic">Квадратичный (x²)</option>
+                    <option value="logarithmic">Логарифмический (log(x+1))</option>
+                    <option value="sinusoidal">Синусоидальный (sin(x))</option>
+                    <option value="custom">Пользовательский</option>
+                </select>
+                <div id="formulaField">
+                    <label>Формула (используйте x как переменную)</label>
+                    <input type="text" id="modalFormula" placeholder="например 2*x-4 или sin(x)*x">
+                    <div class="hint-text">Доступны: + - * / **, sin, cos, tan, log, sqrt, exp, pi, e</div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button id="modalApplyBtn" class="btn-blue">✅ Применить</button>
+                <button id="modalCancelBtn" class="btn-gray">❌ Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модалка сохранения сценария -->
+    <div id="saveScenarioModal" class="modal">
+        <div class="modal-content">
+            <h3>💾 Сохранить сценарий</h3>
+            <label>Название</label>
+            <input type="text" id="scenarioNameInput" placeholder="Мой сценарий">
+            <label>Описание</label>
+            <input type="text" id="scenarioDescInput" placeholder="Краткое описание">
+            <div class="modal-actions">
+                <button id="saveScenarioConfirm" class="btn-green">✅ Сохранить</button>
+                <button id="saveScenarioCancel" class="btn-gray">❌ Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модалка выбора столбцов для CSV -->
+    <div id="columnSelectModal" class="modal">
+        <div class="modal-content">
+            <h3>📊 Выберите столбцы для построения графа</h3>
+            <p>Числовые столбцы (выберите минимум 2):</p>
+            <div id="columnCheckboxes"></div>
+            <div class="modal-actions">
+                <button id="buildGraphBtn" class="btn-blue">🚀 Построить граф</button>
+                <button id="columnCancelBtn" class="btn-gray">❌ Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    {% load static %}
+    <script type="module" src="{% static 'js/app.js' %}"></script>
+</body>
+</html>
