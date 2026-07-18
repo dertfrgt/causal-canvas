@@ -13,6 +13,7 @@ DEBUG = os.environ.get('DJANGO_DEBUG', 'False') == 'True'
 
 ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
+
 # Application definition
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -85,13 +86,14 @@ TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
 
+
 # ---------- СТАТИКА ----------
 STATIC_URL = "/static/"
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')  # папка для собранной статики
-STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]  # исходная папка с JS, CSS
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 
-# WhiteNoise настройка – сжатие и кэширование
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+# ВАЖНО: используйте эту строку (без Manifest)
+STATICFILES_STORAGE = "whitenoise.storage.CompressedStaticFilesStorage"
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
