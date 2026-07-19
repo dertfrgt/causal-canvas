@@ -182,7 +182,10 @@
 <div id="auth-controls" style="margin-left: auto; display: flex; gap: 10px; align-items: center;">
     {% if user.is_authenticated %}
         <span>{{ user.username }}</span>
-        <a href="{% url 'logout' %}" class="btn-gray" style="padding: 4px 12px;">Выйти</a>
+        <form action="{% url 'logout' %}" method="post" style="display:inline;">
+            {% csrf_token %}
+            <button type="submit" class="btn-gray" style="padding: 4px 12px; cursor:pointer;">Выйти</button>
+        </form>
     {% else %}
         <a href="{% url 'login' %}" class="btn-blue" style="padding: 4px 12px;">Войти</a>
         <a href="{% url 'register' %}" class="btn-green" style="padding: 4px 12px;">Регистрация</a>
