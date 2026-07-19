@@ -7,6 +7,10 @@
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
 </head>
 <body>
+    <script>
+    window.userIsAuthenticated = {{ user.is_authenticated|yesno:"true,false" }};
+    </script>
+
     <!-- Блок аутентификации (фиксированный, правый верхний угол) -->
     <div class="auth-container">
         {% if user.is_authenticated %}

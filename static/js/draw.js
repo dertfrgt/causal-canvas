@@ -319,6 +319,20 @@ export function draw() {
         hint += ' 🔲 Режим выделения: клик по узлу → выделить, перетащить → прямоугольник, Delete → удалить';
     }
     ctx.fillText(hint, 20, canvas.height - 10);
+
+    // ---------- СООБЩЕНИЕ ДЛЯ АНОНИМНЫХ ПОЛЬЗОВАТЕЛЕЙ ----------
+    if (!window.userIsAuthenticated && state.nodes.length === 0) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.font = '28px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('👋 Войдите, чтобы начать работу', canvas.width/2, canvas.height/2 - 20);
+        ctx.font = '16px Arial';
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.fillText('Зарегистрируйтесь или войдите в аккаунт', canvas.width/2, canvas.height/2 + 40);
+        ctx.restore();
+    }
 }
 
 // Вспомогательные функции

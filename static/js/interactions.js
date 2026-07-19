@@ -9,6 +9,15 @@ import { findAncestors, findDescendants } from './scenarios.js';
 export function initInteractions() {
     const canvas = document.getElementById('canvas');
 
+    // ---------- БЛОКИРОВКА ДЛЯ АНОНИМНЫХ ПОЛЬЗОВАТЕЛЕЙ ----------
+    if (!window.userIsAuthenticated) {
+        canvas.style.cursor = 'default';
+        canvas.addEventListener('click', () => {
+            alert('Войдите, чтобы редактировать граф');
+        });
+        return; // все остальные обработчики не добавляются
+    }
+
     // Локальные переменные для панорамирования
     let isPanningCandidate = false;
     let panStartMouseX = 0;
