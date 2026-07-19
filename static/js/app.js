@@ -8,7 +8,7 @@ import { initCsvControls } from './csv.js';
 import { initModals } from './modals.js';
 
 async function initApp() {
-    // Восстанавливаем масштаб и смещение из localStorage
+    // Восстанавливаем масштаб и смещение
     const savedScale = localStorage.getItem('causal_scale');
     const savedOffsetX = localStorage.getItem('causal_offsetX');
     const savedOffsetY = localStorage.getItem('causal_offsetY');
@@ -16,15 +16,12 @@ async function initApp() {
     if (savedOffsetX) state.offsetX = parseFloat(savedOffsetX);
     if (savedOffsetY) state.offsetY = parseFloat(savedOffsetY);
 
-    // Загружаем граф
     await loadGraph();
 
-    // Если есть узлы — центрируем граф (авто-центрирование)
     if (state.nodes.length > 0) {
         centerGraph();
     }
 
-    // Инициализация всех контроллеров
     initInteractions();
     initScenarioControls();
     initConstructorControls();
@@ -33,7 +30,7 @@ async function initApp() {
 
     draw();
 
-    // ----- Аутентификация: выпадающее меню -----
+    // Аутентификация: выпадающее меню
     const toggle = document.getElementById('userMenuToggle');
     const dropdown = document.getElementById('userDropdown');
     if (toggle && dropdown) {
@@ -45,6 +42,27 @@ async function initApp() {
             if (!dropdown.contains(e.target) && e.target !== toggle) {
                 dropdown.classList.remove('show');
             }
+        });
+    }
+
+    // Сценарии: выпадающее меню
+    const scenarioToggle = document.getElementById('scenarioToggle');
+    const scenarioMenu = document.getElementById('scenarioMenu');
+    if (scenarioToggle && scenarioMenu) {
+        scenarioToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            scenarioMenu.classList.toggle('show');
+        });
+        document.addEventListener('click', (e) => {
+            if (!scenarioMenu.contains(e.target) && e.target !== scenarioToggle) {
+                scenarioMenu.classList.remove('show');
+            }
+        });
+        // Закрываем меню при выборе действия
+        scenarioMenu.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('click', () => {
+                scenarioMenu.classList.remove('show');
+            });
         });
     }
 }

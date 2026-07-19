@@ -289,3 +289,68 @@
         flex-wrap: wrap;
     }
 }
+/* ---------- Блок сценариев (компактное меню) ---------- */
+#scenario-block {
+    display: flex;
+    justify-content: center;
+    margin: 6px 0 10px;
+}
+
+.scenario-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.scenario-toggle {
+    padding: 6px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.scenario-menu {
+    display: none;
+    position: absolute;
+    top: 36px;
+    left: 0;
+    background: white;
+    min-width: 200px;
+    box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+    border-radius: 8px;
+    padding: 8px 12px;
+    z-index: 999;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.scenario-menu.show {
+    display: flex;
+}
+
+.scenario-menu select {
+    width: 100%;
+    padding: 4px 6px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    margin-bottom: 4px;
+}
+
+.scenario-menu button {
+    width: 100%;
+    text-align: left;
+    padding: 4px 8px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 13px;
+    transition: 0.1s;
+}
+.scenario-menu button:hover {
+    background: #f0f0f0;
+}
+.scenario-menu button.btn-green { color: #27ae60; }
+.scenario-menu button.btn-blue { color: #3498db; }
+.scenario-menu button.btn-red { color: #e74c3c; }
+.scenario-menu button.btn-orange { color: #e67e22; }
+.scenario-menu button.btn-teal { color: #1abc9c; }
