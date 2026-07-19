@@ -1,6 +1,7 @@
 import { state } from './state.js';
 import { draw } from './draw.js';
 import { loadScenariosList } from './api.js';
+import { fetchWithCSRF } from './utils.js';
 
 export function initScenarioControls() {
     document.getElementById('saveScenarioBtn').addEventListener('click', () => {
@@ -49,9 +50,8 @@ export function initScenarioControls() {
 
 async function saveScenario(name, description) {
     try {
-        const resp = await fetch('/api/scenarios/save/', {
+        const resp = await fetchWithCSRF('/api/scenarios/save/', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, description })
         });
         const data = await resp.json();
@@ -68,7 +68,7 @@ async function loadScenario(scenarioId) {
     if (!scenarioId) return alert('Выберите сценарий');
     if (!confirm('Загрузка сценария заменит текущий граф. Продолжить?')) return;
     try {
-        const resp = await fetch(`/api/scenarios/${scenarioId}/load/`, { method: 'POST' });
+        const resp = await fetchWithCSRF(`/api/scenarios/${scenarioId}/load/`, { method: 'POST' });
         const data = await resp.json();
         if (resp.ok) {
             state.nodes = data.nodes;
@@ -92,7 +92,7 @@ async function deleteScenario(scenarioId) {
     if (!scenarioId) return alert('Выберите сценарий');
     if (!confirm('Удалить выбранный сценарий?')) return;
     try {
-        const resp = await fetch(`/api/scenarios/${scenarioId}/delete/`, { method: 'DELETE' });
+        const resp = await fetchWithCSRF(`/api/scenarios/${scenarioId}/delete/`, { method: 'DELETE' });
         if (resp.ok) {
             alert('Сценарий удалён');
             loadScenariosList();
@@ -105,7 +105,7 @@ async function deleteScenario(scenarioId) {
 async function exportScenario(scenarioId) {
     if (!scenarioId) return alert('Выберите сценарий');
     try {
-        const resp = await fetch(`/api/scenarios/${scenarioId}/export/`);
+        const resp = await fetchWithCSRF(`/api/scenarios/${scenarioId}/export/`);
         const data = await resp.json();
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -124,9 +124,8 @@ function importScenario(file) {
             const data = JSON.parse(e.target.result);
             const name = prompt('Введите имя для импортируемого сценария:', 'Imported');
             if (!name) return;
-            const resp = await fetch(`/api/scenarios/import/?name=${encodeURIComponent(name)}`, {
+            const resp = await fetchWithCSRF(`/api/scenarios/import/?name=${encodeURIComponent(name)}`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
             });
             const result = await resp.json();

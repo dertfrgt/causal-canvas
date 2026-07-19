@@ -1,22 +1,21 @@
 import { state } from './state.js';
 import { draw } from './draw.js';
 import { createNodeAt } from './constructor.js';
+import { fetchWithCSRF } from './utils.js';
 
 export function initConstructorControls() {
     const constructorTools = document.getElementById('constructorTools');
 
-    // ----- Переключение режимов (Симуляция/Конструктор) -----
+    // ----- Переключение режимов -----
     document.getElementById('modeToggle').addEventListener('click', () => {
         state.isSimulation = !state.isSimulation;
         document.getElementById('modeToggle').textContent = state.isSimulation ? '🔁 Режим: Симуляция' : '🔁 Режим: Конструктор';
         document.getElementById('status').textContent = state.isSimulation ? '⚡ Режим: симуляция' : '🛠️ Режим: конструктор';
 
-        // Показываем/скрываем центральную зону с инструментами конструктора
         if (constructorTools) {
             constructorTools.style.display = state.isSimulation ? 'none' : 'flex';
         }
 
-        // При переключении выключаем режим выделения
         state.selectionMode = false;
         const selectionToggle = document.getElementById('selectionToggle');
         if (selectionToggle) {
@@ -39,28 +38,25 @@ export function initConstructorControls() {
         draw();
     });
 
-    // ----- Кнопка добавления связи -----
+    // ----- Остальные кнопки (без изменений) -----
     document.getElementById('addEdgeBtn').addEventListener('click', () => {
         state.edgeSourceNode = null;
         alert('Кликните на узел-источник, затем на узел-цель. Клик по тому же узлу или по пустому месту отменяет выбор.');
         draw();
     });
 
-    // ----- Кнопка добавления узла -----
     document.getElementById('addNodeBtn').addEventListener('click', () => {
         if (!state.isSimulation) {
             createNodeAt(0, 0);
         }
     });
 
-    // ----- Кнопка сброса -----
     document.getElementById('resetBtn').addEventListener('click', () => {
         if (confirm('Сбросить все значения на 0?')) {
             location.reload();
         }
     });
 
-    // ----- Кнопка принятия изменений -----
     document.getElementById('acceptBtn').addEventListener('click', () => {
         if (!state.isSimulation) {
             alert('Принятие изменений доступно только в режиме симуляции.');
@@ -74,10 +70,10 @@ export function initConstructorControls() {
         state.highlightAncestors = [];
         state.highlightDescendants = [];
         draw();
-        alert('✅ Изменения приняты. Призраки, вспышки, дельты и градиенты убраны.');
+        alert('✅ Изменения приняты.');
     });
 
-    // ----- Переключение режима выделения -----
+    // ----- Режим выделения -----
     const selectionToggle = document.getElementById('selectionToggle');
     if (selectionToggle) {
         selectionToggle.addEventListener('click', () => {
@@ -96,7 +92,7 @@ export function initConstructorControls() {
         });
     }
 
-    // ----- Кнопка "Удалить выделенные" -----
+    // ----- Удалить выделенные -----
     const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
     if (deleteSelectedBtn) {
         deleteSelectedBtn.addEventListener('click', () => {
@@ -108,7 +104,7 @@ export function initConstructorControls() {
         });
     }
 
-    // ----- Кнопка центрирования -----
+    // ----- Центрирование -----
     const centerBtn = document.getElementById('centerGraphBtn');
     if (centerBtn) {
         centerBtn.addEventListener('click', () => {
@@ -116,17 +112,19 @@ export function initConstructorControls() {
         });
     }
 
-    // ----- Авто-центрирование при загрузке (вызывается из app.js) -----
     window.centerGraph = centerGraph;
 }
 
-// ---------- Функция центрирования графа ----------
+// ---------- Центрирование ----------
 export function centerGraph() {
     if (state.nodes.length === 0) {
         alert('Нет узлов для центрирования.');
         return;
     }
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    let minX = Infinity,
+        maxX = -Infinity,
+        minY = Infinity,
+        maxY = -Infinity;
     for (let node of state.nodes) {
         if (node.x < minX) minX = node.x;
         if (node.x > maxX) maxX = node.x;
@@ -140,8 +138,8 @@ export function centerGraph() {
     const maxDim = Math.max(width, height);
     const canvas = document.getElementById('canvas');
     const padding = 50;
-    const newScale = Math.min((canvas.width - padding*2) / maxDim, (canvas.height - padding*2) / maxDim, 5);
-    const worldCenter = { x: canvas.width/2, y: canvas.height/2 };
+    const newScale = Math.min((canvas.width - padding * 2) / maxDim, (canvas.height - padding * 2) / maxDim, 5);
+    const worldCenter = { x: canvas.width / 2, y: canvas.height / 2 };
     state.offsetX = worldCenter.x - centerX * newScale;
     state.offsetY = worldCenter.y - centerY * newScale;
     state.scale = Math.min(Math.max(newScale, 0.2), 5);
@@ -151,7 +149,7 @@ export function centerGraph() {
     draw();
 }
 
-// ---------- Функция удаления выделенных узлов ----------
+// ---------- Удаление выделенных узлов (с CSRF) ----------
 async function deleteSelectedNodes() {
     const nodeIds = state.selectedNodes;
     if (nodeIds.length === 0) return;
@@ -159,7 +157,7 @@ async function deleteSelectedNodes() {
 
     try {
         for (let id of nodeIds) {
-            const resp = await fetch(`/api/node/${id}/delete/`, { method: 'DELETE' });
+            const resp = await fetchWithCSRF(`/api/node/${id}/delete/`, { method: 'DELETE' });
             if (!resp.ok) {
                 console.warn('Не удалось удалить узел', id);
             }

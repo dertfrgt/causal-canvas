@@ -5,6 +5,7 @@ import { applyCascade } from './cascade.js';
 import { createNodeAt, deleteNode, createEdge, deleteEdge, updateEdgeWeight } from './constructor.js';
 import { updateNodeProps } from './api.js';
 import { findAncestors, findDescendants } from './scenarios.js';
+import { fetchWithCSRF } from './utils.js';
 
 export function initInteractions() {
     const canvas = document.getElementById('canvas');
@@ -238,21 +239,21 @@ export function initInteractions() {
         }
 
         // ---- 2. Завершение перетаскивания узла ----
-        if (state.dragNode) {
-            const node = state.dragNode;
-            try {
-                await fetch(`/api/node/${node.id}/`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ x: node.x, y: node.y })
-                });
-            } catch (err) {
-                console.warn('Не удалось сохранить координаты узла:', err);
-            }
-            state.dragNode = null;
-            canvas.style.cursor = 'default';
-            draw();
-        }
+        // ---- 2. Завершение перетаскивания узла ----
+if (state.dragNode) {
+    const node = state.dragNode;
+    try {
+        await fetchWithCSRF(`/api/node/${node.id}/`, {
+            method: 'PUT',
+            body: JSON.stringify({ x: node.x, y: node.y })
+        });
+    } catch (err) {
+        console.warn('Не удалось сохранить координаты узла:', err);
+    }
+    state.dragNode = null;
+    canvas.style.cursor = 'default';
+    draw();
+}
 
         // ---- 3. Завершение панорамирования ----
         if (state.isPanning) {

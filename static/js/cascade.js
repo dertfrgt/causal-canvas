@@ -1,10 +1,11 @@
 import { state } from './state.js';
 import { draw } from './draw.js';
+import { fetchWithCSRF } from './utils.js';
 
 export async function applyCascade(nodeId, newValue, oldValuesMap) {
     if (!state.isSimulation) return;
     try {
-        const resp = await fetch(`/api/apply_cascade/${nodeId}/`, {
+        const resp = await fetchWithCSRF(`/api/apply_cascade/${nodeId}/`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ value: newValue })
