@@ -178,6 +178,16 @@
         <button id="resetBtn" class="btn-orange">🔄 Сбросить значения</button>
         <button id="acceptBtn" class="btn-green">✅ Принять изменения</button>
         <span id="status">⚡ Режим: симуляция</span>
+        <!-- В блоке #controls, где у вас кнопки -->
+<div id="auth-controls" style="margin-left: auto; display: flex; gap: 10px; align-items: center;">
+    {% if user.is_authenticated %}
+        <span>{{ user.username }}</span>
+        <a href="{% url 'logout' %}" class="btn-gray" style="padding: 4px 12px;">Выйти</a>
+    {% else %}
+        <a href="{% url 'login' %}" class="btn-blue" style="padding: 4px 12px;">Войти</a>
+        <a href="{% url 'register' %}" class="btn-green" style="padding: 4px 12px;">Регистрация</a>
+    {% endif %}
+</div>
     </div>
 
     <!-- Блок сценариев -->
