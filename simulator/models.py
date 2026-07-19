@@ -1,4 +1,5 @@
 from django.db import models
+from django.contrib.auth.models import User
 
 class Node(models.Model):
     TRANSFORM_CHOICES = [
@@ -28,11 +29,15 @@ class Edge(models.Model):
         return f"{self.source} -> {self.target}"
     
 class Scenario(models.Model):
-    name = models.CharField(max_length=200, unique=True)
+    name = models.CharField(max_length=200, unique=False)  # теперь unique=False, т.к. разные пользователи могут иметь одинаковые имена
     description = models.TextField(blank=True)
-    data = models.JSONField()  # хранит полный дамп графа
+    data = models.JSONField()
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='scenarios', null=True, blank=True)  # для анонимных сценариев
+
+    class Meta:
+        unique_together = [['user', 'name']]  # уникальность имени для каждого пользователя
 
     def __str__(self):
         return self.name

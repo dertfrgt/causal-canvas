@@ -13,6 +13,7 @@ urlpatterns = [
     path('api/edge/', views.create_edge),
     path('api/edge/<int:edge_id>/', views.update_edge),
     path('api/edge/<int:edge_id>/delete/', views.delete_edge),
+    # Сценарии
     path('api/scenarios/', views.list_scenarios),
     path('api/scenarios/save/', views.save_scenario),
     path('api/scenarios/<int:scenario_id>/', views.update_scenario),
@@ -20,4 +21,8 @@ urlpatterns = [
     path('api/scenarios/<int:scenario_id>/load/', views.load_scenario),
     path('api/scenarios/<int:scenario_id>/export/', views.export_scenario),
     path('api/scenarios/import/', views.import_scenario),
+    # Аутентификация
+    path('login/', views.CustomLoginView.as_view(), name='login'),
+    path('logout/', views.CustomLogoutView.as_view(), name='logout'),
+    path('register/', views.registration, name='register'),
 ]

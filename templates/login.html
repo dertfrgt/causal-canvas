@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Вход</title>
+    <style>
+        body { font-family: Arial; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f0f2f5; }
+        form { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); width: 300px; }
+        input { width: 100%; padding: 10px; margin: 5px 0; border: 1px solid #ddd; border-radius: 4px; }
+        button { width: 100%; padding: 10px; background: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #2980b9; }
+        .error { color: red; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <form method="post">
+        {% csrf_token %}
+        <h2 style="text-align:center;">Вход</h2>
+        {{ form.as_p }}
+        <button type="submit">Войти</button>
+        <p style="text-align:center; margin-top:10px;">
+            <a href="{% url 'register' %}">Регистрация</a>
+        </p>
+    </form>
+</body>
+</html>

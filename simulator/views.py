@@ -4,7 +4,11 @@ import tempfile
 import os
 import numpy as np
 import logging
-from django.shortcuts import render
+from django.shortcuts import render, redirect
+from django.contrib.auth import login, authenticate
+from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.views import LoginView, LogoutView
+from django.urls import reverse_lazy
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
@@ -63,8 +67,26 @@ ALGORITHMS = {
     }
 }
 
+# ---------- СТРАНИЦЫ АУТЕНТИФИКАЦИИ ----------
 def index(request):
     return render(request, 'index.html')
+
+def registration(request):
+    if request.method == 'POST':
+        form = UserCreationForm(request.POST)
+        if form.is_valid():
+            user = form.save()
+            login(request, user)
+            return redirect('index')
+    else:
+        form = UserCreationForm()
+    return render(request, 'registration/register.html', {'form': form})
+
+class CustomLoginView(LoginView):
+    template_name = 'registration/login.html'
+
+class CustomLogoutView(LogoutView):
+    next_page = 'index'
 
 # ---------- API: получение графа ----------
 @api_view(['GET'])
@@ -152,7 +174,7 @@ def upload_csv(request):
         'row_count': len(df),
     })
 
-# ---------- API: автоматическое построение графа (с выбором алгоритма и max_iter) ----------
+# ---------- API: автоматическое построение графа ----------
 @api_view(['POST'])
 def discover_graph(request):
     if not GCASTLE_AVAILABLE or castle is None:
@@ -204,14 +226,8 @@ def discover_graph(request):
         if model_class is None:
             return Response({'error': f'Algorithm {algorithm} not implemented'}, status=400)
         
-        # Создаём экземпляр с max_iter, если он передан и алгоритм его поддерживает
-        if max_iter is not None:
-            # NOTEARS и GOLEM поддерживают max_iter
-            if algorithm in ['notears', 'golem']:
-                model = model_class(max_iter=max_iter)
-            else:
-                # Для PC и GES игнорируем max_iter
-                model = model_class()
+        if max_iter is not None and algorithm in ['notears', 'golem']:
+            model = model_class(max_iter=max_iter)
         else:
             model = model_class()
         
@@ -286,6 +302,7 @@ def delete_node(request, node_id):
     node.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
 
+# ---------- CRUD для связей ----------
 @api_view(['POST'])
 def create_edge(request):
     serializer = EdgeSerializer(data=request.data)
@@ -320,20 +337,25 @@ def delete_edge(request, edge_id):
     edge.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
 
-# ---------- СЦЕНАРИИ ----------
+# ---------- СЦЕНАРИИ (с привязкой к пользователю) ----------
 @api_view(['GET'])
 def list_scenarios(request):
-    scenarios = Scenario.objects.all().order_by('-created_at')
+    if request.user.is_authenticated:
+        scenarios = Scenario.objects.filter(user=request.user).order_by('-created_at')
+    else:
+        scenarios = Scenario.objects.filter(user__isnull=True).order_by('-created_at')
     serializer = ScenarioSerializer(scenarios, many=True)
     return Response(serializer.data)
 
 @api_view(['POST'])
 def save_scenario(request):
+    if not request.user.is_authenticated:
+        return Response({'error': 'Authentication required'}, status=401)
     name = request.data.get('name')
     description = request.data.get('description', '')
     if not name:
         return Response({'error': 'Name required'}, status=400)
-    if Scenario.objects.filter(name=name).exists():
+    if Scenario.objects.filter(user=request.user, name=name).exists():
         return Response({'error': 'Scenario with this name already exists'}, status=400)
     nodes = Node.objects.all()
     edges = Edge.objects.all()
@@ -341,7 +363,7 @@ def save_scenario(request):
         'nodes': NodeSerializer(nodes, many=True).data,
         'edges': EdgeSerializer(edges, many=True).data,
     }
-    scenario = Scenario.objects.create(name=name, description=description, data=data)
+    scenario = Scenario.objects.create(name=name, description=description, data=data, user=request.user)
     serializer = ScenarioSerializer(scenario)
     return Response(serializer.data, status=201)
 
@@ -351,6 +373,8 @@ def update_scenario(request, scenario_id):
         scenario = Scenario.objects.get(id=scenario_id)
     except Scenario.DoesNotExist:
         return Response(status=404)
+    if scenario.user != request.user:
+        return Response({'error': 'Permission denied'}, status=403)
     name = request.data.get('name')
     description = request.data.get('description')
     if name:
@@ -366,6 +390,8 @@ def delete_scenario(request, scenario_id):
         scenario = Scenario.objects.get(id=scenario_id)
     except Scenario.DoesNotExist:
         return Response(status=404)
+    if scenario.user != request.user:
+        return Response({'error': 'Permission denied'}, status=403)
     scenario.delete()
     return Response(status=204)
 
@@ -375,6 +401,8 @@ def load_scenario(request, scenario_id):
         scenario = Scenario.objects.get(id=scenario_id)
     except Scenario.DoesNotExist:
         return Response(status=404)
+    if scenario.user != request.user:
+        return Response({'error': 'Permission denied'}, status=403)
     data = scenario.data
     Node.objects.all().delete()
     Edge.objects.all().delete()
@@ -413,16 +441,20 @@ def export_scenario(request, scenario_id):
         scenario = Scenario.objects.get(id=scenario_id)
     except Scenario.DoesNotExist:
         return Response(status=404)
+    if scenario.user != request.user:
+        return Response({'error': 'Permission denied'}, status=403)
     return Response(scenario.data)
 
 @api_view(['POST'])
 def import_scenario(request):
+    if not request.user.is_authenticated:
+        return Response({'error': 'Authentication required'}, status=401)
     data = request.data
     if 'nodes' not in data or 'edges' not in data:
         return Response({'error': 'Invalid data format'}, status=400)
     name = request.query_params.get('name', 'Imported scenario')
     description = request.query_params.get('description', '')
-    if Scenario.objects.filter(name=name).exists():
+    if Scenario.objects.filter(user=request.user, name=name).exists():
         return Response({'error': 'Scenario with this name already exists'}, status=400)
-    scenario = Scenario.objects.create(name=name, description=description, data=data)
+    scenario = Scenario.objects.create(name=name, description=description, data=data, user=request.user)
     return Response(ScenarioSerializer(scenario).data, status=201)
