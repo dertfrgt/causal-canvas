@@ -9,20 +9,13 @@ import { findAncestors, findDescendants } from './scenarios.js';
 export function initInteractions() {
     const canvas = document.getElementById('canvas');
 
-    // Локальные переменные для панорамирования и выделения
+    // Локальные переменные для панорамирования
     let isPanningCandidate = false;
     let panStartMouseX = 0;
     let panStartMouseY = 0;
     let panStartOffsetX = 0;
     let panStartOffsetY = 0;
     let wasPanning = false;
-
-    // Для выделения прямоугольником
-    let selectionStartX = 0;
-    let selectionStartY = 0;
-    let selectionEndX = 0;
-    let selectionEndY = 0;
-    let isSelectingRect = false;
 
     // ---------- Перетаскивание (только перемещение, БЕЗ изменения значения) ----------
     canvas.addEventListener('mousedown', (e) => {
@@ -47,7 +40,7 @@ export function initInteractions() {
                 }
             }
             if (hitNode) {
-                // Клик по узлу в режиме выделения — переключаем выделение узла
+                // Переключаем выделение узла
                 const idx = state.selectedNodes.indexOf(hitNode.id);
                 if (idx === -1) {
                     state.selectedNodes.push(hitNode.id);
@@ -57,12 +50,14 @@ export function initInteractions() {
                 draw();
                 return;
             } else {
-                // Клик по пустому месту — начинаем выделение прямоугольником (в экранных координатах)
-                isSelectingRect = true;
-                selectionStartX = mouseX;
-                selectionStartY = mouseY;
-                selectionEndX = mouseX;
-                selectionEndY = mouseY;
+                // Начинаем выделение прямоугольником
+                state.isSelecting = true;
+                state.selectionRect = {
+                    x1: world.x,
+                    y1: world.y,
+                    x2: world.x,
+                    y2: world.y
+                };
                 canvas.style.cursor = 'crosshair';
                 return;
             }
@@ -125,10 +120,10 @@ export function initInteractions() {
             return;
         }
 
-        // ---- 2. Режим выделения: рисование прямоугольника (экранные координаты) ----
-        if (isSelectingRect) {
-            selectionEndX = mouseX;
-            selectionEndY = mouseY;
+        // ---- 2. Режим выделения: обновление прямоугольника ----
+        if (state.isSelecting) {
+            state.selectionRect.x2 = world.x;
+            state.selectionRect.y2 = world.y;
             draw();
             return;
         }
@@ -172,7 +167,7 @@ export function initInteractions() {
         }
 
         // ---- 5. Подсветка ребра и подсказка (если ничего не выделяем) ----
-        if (!isSelectingRect) {
+        if (!state.isSelecting) {
             let foundEdge = null;
             for (let edge of state.edges) {
                 const src = state.nodes.find(n => n.id === edge.source);
@@ -209,23 +204,22 @@ export function initInteractions() {
 
     canvas.addEventListener('mouseup', async (e) => {
         // ---- 1. Завершение выделения прямоугольником ----
-        if (isSelectingRect) {
-            // Преобразуем экранные координаты в мировые
-            const worldStart = screenToWorld(selectionStartX, selectionStartY);
-            const worldEnd = screenToWorld(selectionEndX, selectionEndY);
-            const x1 = Math.min(worldStart.x, worldEnd.x);
-            const y1 = Math.min(worldStart.y, worldEnd.y);
-            const x2 = Math.max(worldStart.x, worldEnd.x);
-            const y2 = Math.max(worldStart.y, worldEnd.y);
+        if (state.isSelecting) {
+            const rect = state.selectionRect;
+            const x1 = Math.min(rect.x1, rect.x2);
+            const y1 = Math.min(rect.y1, rect.y2);
+            const x2 = Math.max(rect.x1, rect.x2);
+            const y2 = Math.max(rect.y1, rect.y2);
 
-            // Находим узлы внутри прямоугольника
+            // Очищаем предыдущее выделение (можно сделать с Shift, пока сбрасываем)
             state.selectedNodes = [];
             for (let node of state.nodes) {
                 if (node.x >= x1 && node.x <= x2 && node.y >= y1 && node.y <= y2) {
                     state.selectedNodes.push(node.id);
                 }
             }
-            isSelectingRect = false;
+            state.isSelecting = false;
+            state.selectionRect = null;
             canvas.style.cursor = 'default';
             draw();
             if (state.selectedNodes.length > 0) {
@@ -273,8 +267,9 @@ export function initInteractions() {
             isPanningCandidate = false;
             draw();
         }
-        if (isSelectingRect) {
-            isSelectingRect = false;
+        if (state.isSelecting) {
+            state.isSelecting = false;
+            state.selectionRect = null;
             draw();
         }
         state.tooltipNode = null;

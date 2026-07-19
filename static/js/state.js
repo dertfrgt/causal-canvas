@@ -28,15 +28,10 @@ export const state = {
     highlightDescendants: [],
     clickedNodeId: null,
     spacePressed: false,
-    isSelectingRect: false,
-    selectionStartX: 0,
-    selectionStartY: 0,
-    selectionEndX: 0,
-    selectionEndY: 0,
 
-    // ---------- НОВОЕ: Режим выделения ----------
-    selectionMode: false,           // включен ли режим выделения
-    selectedNodes: [],              // массив id выделенных узлов
-    selectionRect: null,            // { x1, y1, x2, y2 } в мировых координатах
-    isSelecting: false,            // идёт ли процесс выделения (для отрисовки)
+    // ---------- Режим выделения ----------
+    selectionMode: false,
+    selectedNodes: [],
+    selectionRect: null,      // { x1, y1, x2, y2 } в мировых координатах
+    isSelecting: false,       // идёт процесс выделения (для отрисовки)
 };

@@ -2,11 +2,16 @@ import { state } from './state.js';
 import { pointToSegmentDist } from './utils.js';
 
 export function draw() {
+    // Защита от некорректных данных
+    if (!Array.isArray(state.edges)) state.edges = [];
+    if (!Array.isArray(state.nodes)) state.nodes = [];
+
     const {
         nodes, edges, isSimulation, ghostData, flashes, deltas,
         changedNodes, highlightAncestors, highlightDescendants,
         clickedNodeId, hoveredEdgeId, tooltipNode, dragNode,
-        scale, offsetX, offsetY, edgeSourceNode
+        scale, offsetX, offsetY, edgeSourceNode,
+        selectionMode, selectedNodes, selectionRect, isSelecting
     } = state;
 
     const canvas = document.getElementById('canvas');
@@ -127,14 +132,20 @@ export function draw() {
             }
         }
 
-        // ---- РАДИАЛЬНЫЙ ГРАДИЕНТ (улучшенный) ----
+        // ---------- Подсветка выделенных узлов (режим выделения) ----------
+        if (selectionMode && selectedNodes.includes(node.id)) {
+            strokeColor = '#ff4444';
+            lineWidth = 4;
+            ctx.shadowColor = 'rgba(255, 0, 0, 0.5)';
+            ctx.shadowBlur = 15;
+        }
+
+        // Радиальный градиент
         const gradient = ctx.createRadialGradient(
             node.x - radius * 0.35, node.y - radius * 0.35, radius * 0.1,
             node.x, node.y, radius
         );
-        // Цвета градиента
         const baseColor = fillColor;
-        // Преобразуем hex в rgb для работы
         let r, g, b;
         if (baseColor.startsWith('#')) {
             r = parseInt(baseColor.slice(1,3), 16);
@@ -152,49 +163,45 @@ export function draw() {
         } else {
             r = 100; g = 100; b = 100;
         }
-        // Светлый оттенок для блика
         const lightR = Math.min(255, r + 120);
         const lightG = Math.min(255, g + 120);
         const lightB = Math.min(255, b + 120);
-        // Тёмный оттенок для тени
         const darkR = Math.max(0, r * 0.4);
         const darkG = Math.max(0, g * 0.4);
         const darkB = Math.max(0, b * 0.4);
 
-        gradient.addColorStop(0, `rgb(${lightR},${lightG},${lightB})`); // яркий центр
-        gradient.addColorStop(0.5, `rgb(${r},${g},${b})`);      // основной цвет
-        gradient.addColorStop(1, `rgb(${darkR},${darkG},${darkB})`); // тёмный край
+        gradient.addColorStop(0, `rgb(${lightR},${lightG},${lightB})`);
+        gradient.addColorStop(0.5, `rgb(${r},${g},${b})`);
+        gradient.addColorStop(1, `rgb(${darkR},${darkG},${darkB})`);
 
-        // ---- ТЕНЬ (более реалистичная) ----
         ctx.shadowColor = 'rgba(0,0,0,0.4)';
         ctx.shadowBlur = 20;
         ctx.shadowOffsetX = 5;
         ctx.shadowOffsetY = 12;
 
-        // Рисуем узел
         ctx.beginPath();
         ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI);
         ctx.fillStyle = gradient;
         ctx.fill();
-        ctx.shadowBlur = 0; // сбрасываем тень для обводки
+        ctx.shadowBlur = 0;
         ctx.strokeStyle = strokeColor;
         ctx.lineWidth = lineWidth;
         ctx.stroke();
 
-        // ---- ИМЯ УЗЛА ----
+        // Имя узла
         ctx.fillStyle = 'white';
         ctx.font = 'bold 14px Arial';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(node.name, node.x, node.y);
 
-        // ---- ЗНАЧЕНИЕ ----
+        // Значение
         ctx.fillStyle = 'black';
         ctx.font = '12px Arial';
         ctx.textBaseline = 'top';
         ctx.fillText(node.value.toFixed(1), node.x, node.y + radius + 4);
 
-        // ---- ВСПЫШКИ ----
+        // Вспышки
         if (isSimulation && flashes[node.id]) {
             const colors = flashes[node.id];
             const startX = node.x - (colors.length * 8) / 2;
@@ -217,7 +224,7 @@ export function draw() {
             }
         }
 
-        // ---- ДЕЛЬТА ----
+        // Дельта
         if (deltas[node.id]) {
             const d = deltas[node.id];
             const sign = d.value >= 0 ? '+' : '';
@@ -228,6 +235,23 @@ export function draw() {
             ctx.textBaseline = 'bottom';
             ctx.fillText(sign + d.value.toFixed(1), node.x, node.y - radius - 8);
         }
+    }
+
+    // ===== ПРЯМОУГОЛЬНИК ВЫДЕЛЕНИЯ (в мировых координатах) =====
+    if (isSelecting && selectionRect) {
+        const rect = selectionRect;
+        const x = Math.min(rect.x1, rect.x2);
+        const y = Math.min(rect.y1, rect.y2);
+        const w = Math.abs(rect.x2 - rect.x1);
+        const h = Math.abs(rect.y2 - rect.y1);
+        ctx.save();
+        ctx.strokeStyle = 'rgba(0, 120, 255, 0.8)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(x, y, w, h);
+        ctx.fillStyle = 'rgba(0, 120, 255, 0.1)';
+        ctx.fillRect(x, y, w, h);
+        ctx.restore();
     }
 
     // ===== TOOLTIP =====
@@ -279,39 +303,7 @@ export function draw() {
             ctx.fillText(line, tx + padding, ty + padding + i * lineHeight);
         });
     }
-    // ---------- Прямоугольник выделения (в экранных координатах) ----------
-if (isSelectingRect && selectionStartX !== undefined && selectionEndX !== undefined) {
-    const x = Math.min(selectionStartX, selectionEndX);
-    const y = Math.min(selectionStartY, selectionEndY);
-    const w = Math.abs(selectionEndX - selectionStartX);
-    const h = Math.abs(selectionEndY - selectionStartY);
-    ctx.save();
-    ctx.strokeStyle = 'rgba(0, 120, 255, 0.8)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([6, 4]);
-    ctx.strokeRect(x, y, w, h);
-    ctx.fillStyle = 'rgba(0, 120, 255, 0.1)';
-    ctx.fillRect(x, y, w, h);
-    ctx.restore();
-}
 
-// ---------- Подсветка выделенных узлов ----------
-if (state.selectionMode && state.selectedNodes.length > 0) {
-    for (let node of state.nodes) {
-        if (state.selectedNodes.includes(node.id)) {
-            const radius = Math.sqrt(node.value + 1) * 10;
-            ctx.save();
-            ctx.strokeStyle = '#ff4444';
-            ctx.lineWidth = 3;
-            ctx.shadowColor = 'rgba(255, 0, 0, 0.5)';
-            ctx.shadowBlur = 15;
-            ctx.beginPath();
-            ctx.arc(node.x, node.y, radius + 4, 0, 2 * Math.PI);
-            ctx.stroke();
-            ctx.restore();
-        }
-    }
-}
     ctx.restore();
 
     // ===== ПОДСКАЗКА ВНИЗУ =====
@@ -323,10 +315,13 @@ if (state.selectionMode && state.selectedNodes.length > 0) {
     if (!isSimulation && edgeSourceNode) {
         hint += ' · Выбран источник: ' + edgeSourceNode.name;
     }
+    if (selectionMode) {
+        hint += ' 🔲 Режим выделения: клик по узлу → выделить, перетащить → прямоугольник, Delete → удалить';
+    }
     ctx.fillText(hint, 20, canvas.height - 10);
 }
 
-// Вспомогательные функции преобразования координат (уже есть в state?)
+// Вспомогательные функции
 export function worldToScreen(wx, wy) {
     return { x: wx * state.scale + state.offsetX, y: wy * state.scale + state.offsetY };
 }
@@ -334,7 +329,7 @@ export function screenToWorld(sx, sy) {
     return { x: (sx - state.offsetX) / state.scale, y: (sy - state.offsetY) / state.scale };
 }
 
-// Полифил для roundRect (если нужен)
+// Полифил для roundRect
 if (!CanvasRenderingContext2D.prototype.roundRect) {
     CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, radii) {
         const r = typeof radii === 'number' ? radii : (radii || 0);
