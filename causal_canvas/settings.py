@@ -109,3 +109,7 @@ CSRF_TRUSTED_ORIGINS = [
 CSRF_COOKIE_SECURE = True
 SESSION_COOKIE_SECURE = True
 # Если у вас локально DEBUG=True, можно добавить условие, но можно и всегда так оставить.
+
+# ---------- АУТЕНТИФИКАЦИЯ ----------
+LOGIN_REDIRECT_URL = '/'
+LOGOUT_REDIRECT_URL = '/'
