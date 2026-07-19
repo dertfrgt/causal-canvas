@@ -158,3 +158,134 @@
 #loadingOverlay p {
     margin: 5px 0;
 }
+
+/* ---------- Блок аутентификации (верхний правый угол) ---------- */
+.auth-container {
+    position: fixed;
+    top: 15px;
+    right: 20px;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'Segoe UI', Arial, sans-serif;
+}
+
+.auth-container .user-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #8e44ad;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 16px;
+    cursor: pointer;
+    transition: 0.2s;
+    border: 2px solid transparent;
+}
+.auth-container .user-icon:hover {
+    border-color: #3498db;
+    transform: scale(1.05);
+}
+
+.auth-container .auth-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.auth-container .dropdown-content {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: 42px;
+    background: white;
+    min-width: 140px;
+    box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+    border-radius: 8px;
+    padding: 8px 0;
+    z-index: 10000;
+}
+
+.auth-container .dropdown-content a,
+.auth-container .dropdown-content button {
+    display: block;
+    width: 100%;
+    padding: 8px 16px;
+    text-align: left;
+    border: none;
+    background: none;
+    font-size: 14px;
+    color: #333;
+    cursor: pointer;
+    text-decoration: none;
+    transition: 0.1s;
+}
+.auth-container .dropdown-content a:hover,
+.auth-container .dropdown-content button:hover {
+    background: #f0f0f0;
+}
+.auth-container .dropdown-content .divider {
+    height: 1px;
+    background: #eee;
+    margin: 4px 0;
+}
+
+.auth-container .dropdown-content.show {
+    display: block;
+}
+
+.auth-container .auth-btn {
+    background: none;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: 0.2s;
+}
+.auth-container .auth-btn:hover {
+    background: #f0f0f0;
+}
+
+/* ---------- Группировка кнопок в панели управления ---------- */
+#controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: space-between;
+    align-items: center;
+}
+
+#controls .controls-left,
+#controls .controls-center,
+#controls .controls-right {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+#controls .controls-center {
+    display: none; /* по умолчанию скрыто, показывается только в конструкторе */
+}
+#controls .controls-center.active {
+    display: flex;
+}
+
+/* Адаптивность для маленьких экранов */
+@media (max-width: 768px) {
+    #controls {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+    #controls .controls-left,
+    #controls .controls-center,
+    #controls .controls-right {
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+}

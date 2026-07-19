@@ -7,37 +7,55 @@
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
 </head>
 <body>
+    <!-- Блок аутентификации (фиксированный, правый верхний угол) -->
+    <div class="auth-container">
+        {% if user.is_authenticated %}
+            <div class="auth-dropdown">
+                <div class="user-icon" id="userMenuToggle" title="{{ user.username }}">
+                    {{ user.username|first|upper }}
+                </div>
+                <div class="dropdown-content" id="userDropdown">
+                    <span style="padding: 8px 16px; display: block; font-weight: bold; color: #333;">
+                        {{ user.username }}
+                    </span>
+                    <div class="divider"></div>
+                    <form action="{% url 'logout' %}" method="post">
+                        {% csrf_token %}
+                        <button type="submit">🚪 Выйти</button>
+                    </form>
+                </div>
+            </div>
+        {% else %}
+            <a href="{% url 'login' %}" class="auth-btn">Войти</a>
+            <a href="{% url 'register' %}" class="auth-btn" style="background: #3498db; color: white; border-color: #3498db;">Регистрация</a>
+        {% endif %}
+    </div>
+
     <h1>🧠 Причинно-следственная канва</h1>
 
-    <!-- Основные элементы управления -->
+    <!-- Основные элементы управления (разбиты на три зоны) -->
     <div id="controls">
-        <!-- Режимы и основные действия -->
-        <button id="modeToggle" class="btn-purple">🔁 Режим: Симуляция</button>
-        <button id="addNodeBtn" class="btn-blue" style="display:none;">➕ Добавить узел</button>
-        <button id="addEdgeBtn" class="btn-teal" style="display:none;">➕ Добавить связь</button>
-        <button id="uploadCsvBtn" class="btn-teal">📁 Загрузить CSV</button>
-        <input type="file" id="csvFileInput" accept=".csv" style="display:none;">
-        <button id="resetBtn" class="btn-orange">🔄 Сбросить значения</button>
-        <button id="acceptBtn" class="btn-green">✅ Принять изменения</button>
-        <span id="status">⚡ Режим: симуляция</span>
+        <!-- ЛЕВАЯ ЗОНА: основные действия (всегда видны) -->
+        <div class="controls-left">
+            <button id="modeToggle" class="btn-purple">🔁 Режим: Симуляция</button>
+            <button id="uploadCsvBtn" class="btn-teal">📁 Загрузить CSV</button>
+            <input type="file" id="csvFileInput" accept=".csv" style="display:none;">
+            <button id="resetBtn" class="btn-orange">🔄 Сбросить значения</button>
+            <button id="acceptBtn" class="btn-green">✅ Принять изменения</button>
+            <span id="status">⚡ Режим: симуляция</span>
+        </div>
 
-        <!-- Новые функции (выделение, центрирование, удаление) -->
-        <button id="selectionToggle" class="btn-teal">🔲 Режим выделения</button>
-        <button id="deleteSelectedBtn" class="btn-red" style="display:none;">🗑️ Удалить выделенные</button>
-        <button id="centerGraphBtn" class="btn-purple" title="Центрировать граф">🎯 Центрировать</button>
+        <!-- ЦЕНТРАЛЬНАЯ ЗОНА: инструменты конструктора (видны только в конструкторе) -->
+        <div class="controls-center" id="constructorTools">
+            <button id="addNodeBtn" class="btn-blue">➕ Добавить узел</button>
+            <button id="addEdgeBtn" class="btn-teal">➕ Добавить связь</button>
+            <button id="selectionToggle" class="btn-teal">🔲 Режим выделения</button>
+            <button id="deleteSelectedBtn" class="btn-red">🗑️ Удалить выделенные</button>
+        </div>
 
-        <!-- Аутентификация (в правой части) -->
-        <div id="auth-controls" style="margin-left: auto; display: flex; gap: 10px; align-items: center;">
-            {% if user.is_authenticated %}
-                <span>{{ user.username }}</span>
-                <form action="{% url 'logout' %}" method="post" style="display:inline;">
-                    {% csrf_token %}
-                    <button type="submit" class="btn-gray" style="padding: 4px 12px; cursor:pointer;">Выйти</button>
-                </form>
-            {% else %}
-                <a href="{% url 'login' %}" class="btn-blue" style="padding: 4px 12px;">Войти</a>
-                <a href="{% url 'register' %}" class="btn-green" style="padding: 4px 12px;">Регистрация</a>
-            {% endif %}
+        <!-- ПРАВАЯ ЗОНА: навигация и дополнительные элементы (всегда видны) -->
+        <div class="controls-right">
+            <button id="centerGraphBtn" class="btn-purple" title="Центрировать граф">🎯 Центрировать</button>
         </div>
     </div>
 

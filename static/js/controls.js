@@ -3,21 +3,30 @@ import { draw } from './draw.js';
 import { createNodeAt } from './constructor.js';
 
 export function initConstructorControls() {
+    const constructorTools = document.getElementById('constructorTools');
+
     // ----- Переключение режимов (Симуляция/Конструктор) -----
     document.getElementById('modeToggle').addEventListener('click', () => {
         state.isSimulation = !state.isSimulation;
         document.getElementById('modeToggle').textContent = state.isSimulation ? '🔁 Режим: Симуляция' : '🔁 Режим: Конструктор';
         document.getElementById('status').textContent = state.isSimulation ? '⚡ Режим: симуляция' : '🛠️ Режим: конструктор';
-        document.getElementById('addNodeBtn').style.display = state.isSimulation ? 'none' : 'inline-block';
-        document.getElementById('addEdgeBtn').style.display = state.isSimulation ? 'none' : 'inline-block';
-        document.getElementById('deleteSelectedBtn').style.display = state.isSimulation ? 'none' : 'inline-block';
+
+        // Показываем/скрываем центральную зону с инструментами конструктора
+        if (constructorTools) {
+            constructorTools.style.display = state.isSimulation ? 'none' : 'flex';
+        }
+
         // При переключении выключаем режим выделения
         state.selectionMode = false;
-        document.getElementById('selectionToggle').textContent = '🔲 Режим выделения';
+        const selectionToggle = document.getElementById('selectionToggle');
+        if (selectionToggle) {
+            selectionToggle.textContent = '🔲 Режим выделения';
+        }
         state.selectedNodes = [];
         state.selectionRect = null;
         state.isSelecting = false;
         state.edgeSourceNode = null;
+
         if (!state.isSimulation) {
             state.ghostData = {};
             state.flashes = {};
@@ -99,7 +108,7 @@ export function initConstructorControls() {
         });
     }
 
-    // ----- Кнопка "Центрировать граф" -----
+    // ----- Кнопка центрирования -----
     const centerBtn = document.getElementById('centerGraphBtn');
     if (centerBtn) {
         centerBtn.addEventListener('click', () => {
@@ -142,7 +151,7 @@ export function centerGraph() {
     draw();
 }
 
-// ---------- Функция удаления выделенных узлов (дублируется из interactions.js, чтобы не было циклических зависимостей) ----------
+// ---------- Функция удаления выделенных узлов ----------
 async function deleteSelectedNodes() {
     const nodeIds = state.selectedNodes;
     if (nodeIds.length === 0) return;
