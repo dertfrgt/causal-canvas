@@ -279,15 +279,12 @@ export function draw() {
             ctx.fillText(line, tx + padding, ty + padding + i * lineHeight);
         });
     }
-
-    ctx.restore();
-    // ---------- Прямоугольник выделения ----------
-if (state.isSelecting && state.selectionRect) {
-    const rect = state.selectionRect;
-    const x = Math.min(rect.x1, rect.x2);
-    const y = Math.min(rect.y1, rect.y2);
-    const w = Math.abs(rect.x2 - rect.x1);
-    const h = Math.abs(rect.y2 - rect.y1);
+    // ---------- Прямоугольник выделения (в экранных координатах) ----------
+if (isSelectingRect && selectionStartX !== undefined && selectionEndX !== undefined) {
+    const x = Math.min(selectionStartX, selectionEndX);
+    const y = Math.min(selectionStartY, selectionEndY);
+    const w = Math.abs(selectionEndX - selectionStartX);
+    const h = Math.abs(selectionEndY - selectionStartY);
     ctx.save();
     ctx.strokeStyle = 'rgba(0, 120, 255, 0.8)';
     ctx.lineWidth = 2;
@@ -298,7 +295,7 @@ if (state.isSelecting && state.selectionRect) {
     ctx.restore();
 }
 
-// ---------- Подсветка выделенных узлов (если режим выделения включён) ----------
+// ---------- Подсветка выделенных узлов ----------
 if (state.selectionMode && state.selectedNodes.length > 0) {
     for (let node of state.nodes) {
         if (state.selectedNodes.includes(node.id)) {
@@ -315,6 +312,8 @@ if (state.selectionMode && state.selectedNodes.length > 0) {
         }
     }
 }
+    ctx.restore();
+
     // ===== ПОДСКАЗКА ВНИЗУ =====
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
     ctx.font = '14px Arial';

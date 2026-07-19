@@ -28,6 +28,11 @@ export const state = {
     highlightDescendants: [],
     clickedNodeId: null,
     spacePressed: false,
+    isSelectingRect: false,
+    selectionStartX: 0,
+    selectionStartY: 0,
+    selectionEndX: 0,
+    selectionEndY: 0,
 
     // ---------- НОВОЕ: Режим выделения ----------
     selectionMode: false,           // включен ли режим выделения

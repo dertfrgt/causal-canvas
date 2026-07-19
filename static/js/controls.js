@@ -3,7 +3,19 @@ import { draw } from './draw.js';
 import { createNodeAt } from './constructor.js';
 
 export function initConstructorControls() {
+    // ----- Кнопка "Удалить выделенные" -----
+const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+if (deleteSelectedBtn) {
+    deleteSelectedBtn.addEventListener('click', () => {
+        if (state.selectionMode && state.selectedNodes.length > 0) {
+            deleteSelectedNodes();
+        } else {
+            alert('Нет выделенных узлов или режим выделения выключен.');
+        }
+    });
+}
     // ----- Переключение режимов (Симуляция/Конструктор) -----
+    document.getElementById('deleteSelectedBtn').style.display = state.isSimulation ? 'none' : 'inline-block';
     document.getElementById('modeToggle').addEventListener('click', () => {
         state.isSimulation = !state.isSimulation;
         document.getElementById('modeToggle').textContent = state.isSimulation ? '🔁 Режим: Симуляция' : '🔁 Режим: Конструктор';

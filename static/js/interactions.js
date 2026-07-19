@@ -9,13 +9,20 @@ import { findAncestors, findDescendants } from './scenarios.js';
 export function initInteractions() {
     const canvas = document.getElementById('canvas');
 
-    // Локальные переменные для панорамирования
+    // Локальные переменные для панорамирования и выделения
     let isPanningCandidate = false;
     let panStartMouseX = 0;
     let panStartMouseY = 0;
     let panStartOffsetX = 0;
     let panStartOffsetY = 0;
     let wasPanning = false;
+
+    // Для выделения прямоугольником
+    let selectionStartX = 0;
+    let selectionStartY = 0;
+    let selectionEndX = 0;
+    let selectionEndY = 0;
+    let isSelectingRect = false;
 
     // ---------- Перетаскивание (только перемещение, БЕЗ изменения значения) ----------
     canvas.addEventListener('mousedown', (e) => {
@@ -50,14 +57,12 @@ export function initInteractions() {
                 draw();
                 return;
             } else {
-                // Клик по пустому месту — начинаем выделение прямоугольником
-                state.isSelecting = true;
-                state.selectionRect = {
-                    x1: world.x,
-                    y1: world.y,
-                    x2: world.x,
-                    y2: world.y
-                };
+                // Клик по пустому месту — начинаем выделение прямоугольником (в экранных координатах)
+                isSelectingRect = true;
+                selectionStartX = mouseX;
+                selectionStartY = mouseY;
+                selectionEndX = mouseX;
+                selectionEndY = mouseY;
                 canvas.style.cursor = 'crosshair';
                 return;
             }
@@ -120,10 +125,10 @@ export function initInteractions() {
             return;
         }
 
-        // ---- 2. Режим выделения: рисование прямоугольника ----
-        if (state.isSelecting && state.selectionRect) {
-            state.selectionRect.x2 = world.x;
-            state.selectionRect.y2 = world.y;
+        // ---- 2. Режим выделения: рисование прямоугольника (экранные координаты) ----
+        if (isSelectingRect) {
+            selectionEndX = mouseX;
+            selectionEndY = mouseY;
             draw();
             return;
         }
@@ -167,7 +172,7 @@ export function initInteractions() {
         }
 
         // ---- 5. Подсветка ребра и подсказка (если ничего не выделяем) ----
-        if (!state.isSelecting) {
+        if (!isSelectingRect) {
             let foundEdge = null;
             for (let edge of state.edges) {
                 const src = state.nodes.find(n => n.id === edge.source);
@@ -204,28 +209,27 @@ export function initInteractions() {
 
     canvas.addEventListener('mouseup', async (e) => {
         // ---- 1. Завершение выделения прямоугольником ----
-        if (state.isSelecting && state.selectionRect) {
-            // Находим узлы внутри прямоугольника
-            const rect = state.selectionRect;
-            const x1 = Math.min(rect.x1, rect.x2);
-            const y1 = Math.min(rect.y1, rect.y2);
-            const x2 = Math.max(rect.x1, rect.x2);
-            const y2 = Math.max(rect.y1, rect.y2);
+        if (isSelectingRect) {
+            // Преобразуем экранные координаты в мировые
+            const worldStart = screenToWorld(selectionStartX, selectionStartY);
+            const worldEnd = screenToWorld(selectionEndX, selectionEndY);
+            const x1 = Math.min(worldStart.x, worldEnd.x);
+            const y1 = Math.min(worldStart.y, worldEnd.y);
+            const x2 = Math.max(worldStart.x, worldEnd.x);
+            const y2 = Math.max(worldStart.y, worldEnd.y);
 
-            // Очищаем предыдущее выделение, если не зажат Shift
-            // (можно сделать с Shift для добавления, но для простоты пока сбрасываем)
+            // Находим узлы внутри прямоугольника
             state.selectedNodes = [];
             for (let node of state.nodes) {
                 if (node.x >= x1 && node.x <= x2 && node.y >= y1 && node.y <= y2) {
                     state.selectedNodes.push(node.id);
                 }
             }
-            state.isSelecting = false;
-            state.selectionRect = null;
+            isSelectingRect = false;
             canvas.style.cursor = 'default';
             draw();
             if (state.selectedNodes.length > 0) {
-                alert(`Выделено ${state.selectedNodes.length} узлов. Для удаления нажмите Delete.`);
+                alert(`Выделено ${state.selectedNodes.length} узлов. Для удаления нажмите Delete или кнопку "Удалить выделенные".`);
             }
             return;
         }
@@ -269,9 +273,8 @@ export function initInteractions() {
             isPanningCandidate = false;
             draw();
         }
-        if (state.isSelecting) {
-            state.isSelecting = false;
-            state.selectionRect = null;
+        if (isSelectingRect) {
+            isSelectingRect = false;
             draw();
         }
         state.tooltipNode = null;
@@ -383,7 +386,7 @@ export function initInteractions() {
     // ---------- Клик для выбора источника связи (конструктор) ----------
     canvas.addEventListener('click', (e) => {
         if (wasPanning) { wasPanning = false; return; }
-        if (state.isSimulation || state.selectionMode) return; // в режиме выделения не используем
+        if (state.isSimulation || state.selectionMode) return;
         const rect = canvas.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
@@ -493,4 +496,36 @@ export function initInteractions() {
             draw();
         }
     });
+
+    // ---------- Глобальный обработчик Delete для удаления выделенных узлов ----------
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Delete' || e.key === 'Del') {
+            if (state.selectionMode && state.selectedNodes.length > 0) {
+                deleteSelectedNodes();
+            }
+        }
+    });
+}
+
+// ---------- Функция удаления выделенных узлов (вынесена в глобальную область) ----------
+async function deleteSelectedNodes() {
+    const nodeIds = state.selectedNodes;
+    if (nodeIds.length === 0) return;
+    if (!confirm(`Удалить ${nodeIds.length} выделенных узлов и все связанные с ними рёбра?`)) return;
+
+    try {
+        for (let id of nodeIds) {
+            const resp = await fetch(`/api/node/${id}/delete/`, { method: 'DELETE' });
+            if (!resp.ok) {
+                console.warn('Не удалось удалить узел', id);
+            }
+        }
+        state.nodes = state.nodes.filter(n => !nodeIds.includes(n.id));
+        state.edges = state.edges.filter(e => !nodeIds.includes(e.source) && !nodeIds.includes(e.target));
+        state.selectedNodes = [];
+        draw();
+        alert('Выделенные узлы удалены.');
+    } catch (err) {
+        alert('Ошибка при удалении: ' + err);
+    }
 }
