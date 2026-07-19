@@ -13,12 +13,8 @@ def safe_eval(expr, x):
     return eval(code, {"__builtins__": {}}, allowed_names)
 
 
-def compute_signal(node, value_dict):
-    """
-    Вычисляет исходящий сигнал узла на основе его значения из value_dict.
-    value_dict — словарь {node_id: значение} для уже вычисленных узлов.
-    """
-    val = value_dict.get(node.id, node.value)
+def compute_signal(node, current_values):
+    val = current_values.get(node.id, node.value)
     t = node.transform_type
     if t == 'linear':
         return val
@@ -44,70 +40,51 @@ def cascade_update(changed_node_id, new_value):
       - changes: {node_id: новое_значение}
       - origins: {node_id: [source_id1, source_id2, ...]}
     """
-    # Загружаем все узлы и рёбра
-    all_nodes = {node.id: node for node in Node.objects.all()}
-    all_edges = Edge.objects.all()
-
-    # Построим список входящих рёбер для каждого узла (для быстрого доступа)
-    incoming = {nid: [] for nid in all_nodes}
-    for edge in all_edges:
-        incoming[edge.target.id].append(edge)
-
-    # Определяем множество узлов, достижимых от changed_node_id по направлению стрелок
-    reachable = set()
-    stack = [changed_node_id]
-    while stack:
-        nid = stack.pop()
-        if nid in reachable:
-            continue
-        reachable.add(nid)
-        for edge in all_edges:
-            if edge.source.id == nid and edge.target.id not in reachable:
-                stack.append(edge.target.id)
-
-    # Словарь для хранения вычисленных значений
-    current_values = {nid: all_nodes[nid].value for nid in all_nodes}
-    # Обнуляем все значения, кроме источника
-    for nid in reachable:
-        if nid != changed_node_id:
-            current_values[nid] = 0.0
+    # Загружаем все узлы
+    nodes = Node.objects.all()
+    # Создаём словарь текущих значений
+    current_values = {node.id: node.value for node in nodes}
+    
+    # Устанавливаем новое значение для источника
     current_values[changed_node_id] = new_value
-
-    changes = {}
-    origins = {}
-
-    # BFS для распространения
+    
+    # Обнуляем значения всех остальных узлов (они будут пересчитаны)
+    for node in nodes:
+        if node.id != changed_node_id:
+            current_values[node.id] = 0.0
+    
+    changes = {changed_node_id: new_value}
+    origins = {changed_node_id: []}
+    
+    # Очередь для BFS (распространение по исходящим рёбрам)
     queue = [changed_node_id]
     visited = set([changed_node_id])
-
+    
     while queue:
         node_id = queue.pop(0)
-        node = all_nodes[node_id]
+        node = Node.objects.get(id=node_id)
+        # Вычисляем сигнал, который этот узел отправляет дальше
         signal = compute_signal(node, current_values)
-
-        for edge in incoming.get(node_id, []):  # исходящие рёбра
-            target_id = edge.target.id
-            if target_id in visited:
-                continue
+        
+        for edge in node.outgoing_edges.all():
+            target = edge.target
+            if target.id in visited:
+                continue  # не возвращаемся
             # Добавляем вклад
-            current_values[target_id] += signal * edge.weight
-            changes[target_id] = current_values[target_id]
-            if target_id not in origins:
-                origins[target_id] = []
-            origins[target_id].append(node_id)
-            visited.add(target_id)
-            queue.append(target_id)
-
-    # Обновляем значения узлов в БД
+            current_values[target.id] += signal * edge.weight
+            # Запоминаем изменение и источник
+            changes[target.id] = current_values[target.id]
+            if target.id not in origins:
+                origins[target.id] = []
+            origins[target.id].append(node_id)
+            # Помечаем как посещённый и добавляем в очередь
+            visited.add(target.id)
+            queue.append(target.id)
+    
+    # Сохраняем обновлённые значения в БД
     for node_id, val in current_values.items():
-        if node_id in all_nodes:
-            node = all_nodes[node_id]
-            node.value = val
-            node.save()
-
-    # Формируем changes для всех изменённых узлов (включая источник)
-    for nid in visited:
-        if nid not in changes:
-            changes[nid] = current_values[nid]
-
+        node = Node.objects.get(id=node_id)
+        node.value = val
+        node.save()
+    
     return changes, origins
