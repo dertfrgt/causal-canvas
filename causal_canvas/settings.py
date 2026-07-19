@@ -100,3 +100,12 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Сессии (для хранения данных CSV)
 SESSION_ENGINE = "django.contrib.sessions.backends.db"
+
+# ---------- БЕЗОПАСНОСТЬ И CSRF ----------
+CSRF_TRUSTED_ORIGINS = [
+    'https://web-production-24080.up.railway.app',
+    'https://*.up.railway.app',
+]
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = True
+# Если у вас локально DEBUG=True, можно добавить условие, но можно и всегда так оставить.
