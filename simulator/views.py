@@ -15,6 +15,16 @@ from rest_framework import status
 from .models import Node, Edge, Scenario
 from .serializers import NodeSerializer, EdgeSerializer, ScenarioSerializer
 from .cascade import cascade_update
+from concurrent.futures import ThreadPoolExecutor
+import uuid
+import hashlib
+from django.core.cache import cache
+
+# Пул потоков (можно настроить под свои нужды)
+executor = ThreadPoolExecutor(max_workers=2)
+
+# Хранилище для задач (future объектов) по task_id
+task_store = {}
 
 logger = logging.getLogger(__name__)
 
@@ -174,45 +184,18 @@ def upload_csv(request):
         'row_count': len(df),
     })
 
-# ---------- API: автоматическое построение графа ----------
-@api_view(['POST'])
-def discover_graph(request):
-    if not GCASTLE_AVAILABLE or castle is None:
-        return Response({
-            'error': 'gCastle не доступен. Установите: pip install gcastle'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
-    columns = request.data.get('columns', [])
-    if not columns or len(columns) < 2:
-        return Response({'error': 'At least 2 numeric columns required'}, status=400)
-    
-    algorithm = request.data.get('algorithm', 'notears').lower()
-    threshold = float(request.data.get('threshold', 0.05))
-    max_iter = request.data.get('max_iter')
-    if max_iter is not None:
-        try:
-            max_iter = int(max_iter)
-        except ValueError:
-            max_iter = None
-    
-    if algorithm not in ALGORITHMS:
-        return Response({'error': f'Unknown algorithm. Available: {list(ALGORITHMS.keys())}'}, status=400)
-    
-    file_path = request.session.get('csv_file_path')
-    if not file_path or not os.path.exists(file_path):
-        return Response({'error': 'No data uploaded. Please upload CSV first.'}, status=400)
-    
+def run_causal_discovery(file_path, columns, algorithm, threshold, max_iter):
     try:
         df = pd.read_csv(file_path)
         df_selected = df[columns].dropna()
         if len(df_selected) < 3:
-            return Response({'error': 'Not enough rows after dropping NA (need at least 3).'}, status=400)
+            return {'error': 'Not enough rows after dropping NA (need at least 3).'}
         if ALGORITHMS[algorithm]['requires_normalization']:
             df_processed = (df_selected - df_selected.mean()) / df_selected.std()
         else:
             df_processed = df_selected
     except Exception as e:
-        return Response({'error': f'Error preparing data: {str(e)}'}, status=400)
+        return {'error': f'Error preparing data: {str(e)}'}
     
     try:
         from castle.algorithms import Notears, PC, GES, GOLEM
@@ -224,14 +207,14 @@ def discover_graph(request):
         }
         model_class = alg_map.get(algorithm)
         if model_class is None:
-            return Response({'error': f'Algorithm {algorithm} not implemented'}, status=400)
+            return {'error': f'Algorithm {algorithm} not implemented'}
         
         if max_iter is not None and algorithm in ['notears', 'golem']:
             model = model_class(max_iter=max_iter)
         else:
             model = model_class()
         
-        logger.info(f"Запуск алгоритма {algorithm} (max_iter={max_iter if max_iter else 'default'}) на данных {df_processed.shape}")
+        logger.info(f"Запуск алгоритма {algorithm} (max_iter={max_iter if max_iter else 'default'})")
         model.learn(df_processed)
         causal_matrix = model.causal_matrix
         logger.info("Алгоритм завершил работу")
@@ -264,13 +247,77 @@ def discover_graph(request):
         
         nodes = Node.objects.all()
         edges = Edge.objects.all()
-        return Response({
+        result = {
             'nodes': NodeSerializer(nodes, many=True).data,
             'edges': EdgeSerializer(edges, many=True).data,
-        })
+        }
+        # Сохраняем в кэш (на 1 час)
+        cache_key = hashlib.md5(
+            f"{file_path}_{columns}_{algorithm}_{threshold}_{max_iter}".encode()
+        ).hexdigest()
+        cache.set(cache_key, result, 3600)
+        return result
     except Exception as e:
         logger.error(f"Ошибка: {str(e)}")
-        return Response({'error': f'Error: {str(e)}'}, status=500)
+        return {'error': f'Error: {str(e)}'}
+
+@api_view(['GET'])
+def get_task_result(request, task_id):
+    future = task_store.get(task_id)
+    if future is None:
+        return Response({'error': 'Task not found'}, status=404)
+    if not future.done():
+        return Response({'status': 'processing'})
+    try:
+        result = future.result()
+        # Если результат содержит ошибку
+        if isinstance(result, dict) and 'error' in result:
+            return Response({'status': 'error', 'error': result['error']}, status=500)
+        return Response({'status': 'completed', 'result': result})
+    except Exception as e:
+        return Response({'status': 'error', 'error': str(e)}, status=500)
+# ---------- API: автоматическое построение графа ----------
+@api_view(['POST'])
+def discover_graph(request):
+    columns = request.data.get('columns', [])
+    if not columns or len(columns) < 2:
+        return Response({'error': 'At least 2 numeric columns required'}, status=400)
+    
+    algorithm = request.data.get('algorithm', 'notears').lower()
+    threshold = float(request.data.get('threshold', 0.05))
+    max_iter = request.data.get('max_iter')
+    if max_iter is not None:
+        try:
+            max_iter = int(max_iter)
+        except ValueError:
+            max_iter = None
+    
+    file_path = request.session.get('csv_file_path')
+    if not file_path or not os.path.exists(file_path):
+        return Response({'error': 'No data uploaded. Please upload CSV first.'}, status=400)
+    
+    # Генерируем ключ кэша
+    cache_key = hashlib.md5(
+        f"{file_path}_{columns}_{algorithm}_{threshold}_{max_iter}".encode()
+    ).hexdigest()
+    
+    # Проверяем кэш
+    cached_result = cache.get(cache_key)
+    if cached_result:
+        return Response(cached_result)  # ← ИСПРАВЛЕНО
+    
+    # Создаём задачу
+    task_id = str(uuid.uuid4())
+    future = executor.submit(
+        run_causal_discovery,
+        file_path,
+        columns,
+        algorithm,
+        threshold,
+        max_iter
+    )
+    task_store[task_id] = future
+    return Response({'task_id': task_id, 'status': 'processing'})
 
 # ---------- CRUD для узлов ----------
 @api_view(['POST'])

@@ -25,4 +25,6 @@ urlpatterns = [
     path('login/', views.CustomLoginView.as_view(), name='login'),
     path('logout/', views.CustomLogoutView.as_view(), name='logout'),
     path('register/', views.registration, name='register'),
+    path('api/task/<str:task_id>/', views.get_task_result, name='task_result'),
+    
 ]
