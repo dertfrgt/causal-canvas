@@ -11,7 +11,7 @@
 
     <!-- Основные элементы управления -->
     <div id="controls">
-        <!-- Кнопки управления -->
+        <!-- Режимы и основные действия -->
         <button id="modeToggle" class="btn-purple">🔁 Режим: Симуляция</button>
         <button id="addNodeBtn" class="btn-blue" style="display:none;">➕ Добавить узел</button>
         <button id="addEdgeBtn" class="btn-teal" style="display:none;">➕ Добавить связь</button>
@@ -21,12 +21,12 @@
         <button id="acceptBtn" class="btn-green">✅ Принять изменения</button>
         <span id="status">⚡ Режим: симуляция</span>
 
-        <!-- Новые функции -->
+        <!-- Новые функции (выделение, центрирование, удаление) -->
         <button id="selectionToggle" class="btn-teal">🔲 Режим выделения</button>
         <button id="deleteSelectedBtn" class="btn-red" style="display:none;">🗑️ Удалить выделенные</button>
-        <button id="centerBtn" class="btn-purple" title="Центрировать граф">🎯 Центрировать</button>
+        <button id="centerGraphBtn" class="btn-purple" title="Центрировать граф">🎯 Центрировать</button>
 
-        <!-- Аутентификация -->
+        <!-- Аутентификация (в правой части) -->
         <div id="auth-controls" style="margin-left: auto; display: flex; gap: 10px; align-items: center;">
             {% if user.is_authenticated %}
                 <span>{{ user.username }}</span>
@@ -58,10 +58,70 @@
     <canvas id="canvas" width="1000" height="600"></canvas>
     <div id="info">🖱️ Перетащите узел · Двойной клик по узлу → настройки, по ребру → вес · Пробел + перетаскивание для панорамирования · Колёсико для зума · Клик по узлу → показать цепочку</div>
 
-    <!-- Модалки (не изменяются) -->
-    <div id="editNodeModal" class="modal">...</div>
-    <div id="saveScenarioModal" class="modal">...</div>
-    <div id="columnSelectModal" class="modal">...</div>
+    <!-- Модалка редактирования узла -->
+    <div id="editNodeModal" class="modal">
+        <div class="modal-content">
+            <h3 id="modalTitle">✏️ Настройки узла</h3>
+            <div class="section">
+                <label>Имя узла</label>
+                <input type="text" id="modalNodeName" value="Узел">
+                <label>Цвет</label>
+                <input type="color" id="modalNodeColor" value="#3498db">
+            </div>
+            <div class="section" id="valueSection">
+                <label>Новое значение (оставьте пустым, чтобы не менять)</label>
+                <input type="number" id="modalNodeValue" step="0.1" placeholder="например 25">
+                <div class="hint-text">Изменение значения запустит каскадный пересчёт</div>
+            </div>
+            <div class="section">
+                <label>Закон трансформации</label>
+                <select id="modalTransformType">
+                    <option value="linear">Линейный (x)</option>
+                    <option value="quadratic">Квадратичный (x²)</option>
+                    <option value="logarithmic">Логарифмический (log(x+1))</option>
+                    <option value="sinusoidal">Синусоидальный (sin(x))</option>
+                    <option value="custom">Пользовательский</option>
+                </select>
+                <div id="formulaField">
+                    <label>Формула (используйте x как переменную)</label>
+                    <input type="text" id="modalFormula" placeholder="например 2*x-4 или sin(x)*x">
+                    <div class="hint-text">Доступны: + - * / **, sin, cos, tan, log, sqrt, exp, pi, e</div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button id="modalApplyBtn" class="btn-blue">✅ Применить</button>
+                <button id="modalCancelBtn" class="btn-gray">❌ Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модалка сохранения сценария -->
+    <div id="saveScenarioModal" class="modal">
+        <div class="modal-content">
+            <h3>💾 Сохранить сценарий</h3>
+            <label>Название</label>
+            <input type="text" id="scenarioNameInput" placeholder="Мой сценарий">
+            <label>Описание</label>
+            <input type="text" id="scenarioDescInput" placeholder="Краткое описание">
+            <div class="modal-actions">
+                <button id="saveScenarioConfirm" class="btn-green">✅ Сохранить</button>
+                <button id="saveScenarioCancel" class="btn-gray">❌ Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модалка выбора столбцов для CSV -->
+    <div id="columnSelectModal" class="modal">
+        <div class="modal-content">
+            <h3>📊 Выберите столбцы для построения графа</h3>
+            <p>Числовые столбцы (выберите минимум 2):</p>
+            <div id="columnCheckboxes"></div>
+            <div class="modal-actions">
+                <button id="buildGraphBtn" class="btn-blue">🚀 Построить граф</button>
+                <button id="columnCancelBtn" class="btn-gray">❌ Отмена</button>
+            </div>
+        </div>
+    </div>
 
     {% load static %}
     <script type="module" src="{% static 'js/app.js' %}"></script>
