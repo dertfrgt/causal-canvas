@@ -16,6 +16,7 @@ class Node(models.Model):
     transform_type = models.CharField(max_length=20, choices=TRANSFORM_CHOICES, default='linear')
     transform_formula = models.TextField(blank=True, null=True, help_text='Формула для пользовательского типа (например, 2*x-4)')
     value = models.FloatField(default=0.0)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='nodes')
 
     def __str__(self):
         return self.name
@@ -24,20 +25,21 @@ class Edge(models.Model):
     source = models.ForeignKey(Node, on_delete=models.CASCADE, related_name='outgoing_edges')
     target = models.ForeignKey(Node, on_delete=models.CASCADE, related_name='incoming_edges')
     weight = models.FloatField(default=1.0)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='edges')
 
     def __str__(self):
         return f"{self.source} -> {self.target}"
-    
+
 class Scenario(models.Model):
-    name = models.CharField(max_length=200, unique=False)  # теперь unique=False, т.к. разные пользователи могут иметь одинаковые имена
+    name = models.CharField(max_length=200, unique=False)
     description = models.TextField(blank=True)
     data = models.JSONField()
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='scenarios', null=True, blank=True)  # для анонимных сценариев
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='scenarios', null=True, blank=True)
 
     class Meta:
-        unique_together = [['user', 'name']]  # уникальность имени для каждого пользователя
+        unique_together = [['user', 'name']]
 
     def __str__(self):
         return self.name

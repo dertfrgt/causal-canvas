@@ -98,19 +98,30 @@ class CustomLoginView(LoginView):
 class CustomLogoutView(LogoutView):
     next_page = 'index'
 
-# ---------- API: получение графа ----------
+# ---------- API: получение графа (только для текущего пользователя) ----------
 @api_view(['GET'])
 def get_graph(request):
-    nodes = Node.objects.all()
-    edges = Edge.objects.all()
+    if request.user.is_authenticated:
+        nodes = Node.objects.filter(user=request.user)
+        edges = Edge.objects.filter(user=request.user)
+    else:
+        # Анонимный пользователь видит пустой холст
+        nodes = Node.objects.none()
+        edges = Edge.objects.none()
     return Response({
         'nodes': NodeSerializer(nodes, many=True).data,
         'edges': EdgeSerializer(edges, many=True).data,
     })
 
-# ---------- API: каскад ----------
+# ---------- API: каскад (с проверкой владельца) ----------
 @api_view(['POST'])
 def apply_cascade(request, node_id):
+    if not request.user.is_authenticated:
+        return Response({'error': 'Authentication required'}, status=401)
+    try:
+        node = Node.objects.get(id=node_id, user=request.user)
+    except Node.DoesNotExist:
+        return Response({'error': 'Node not found or permission denied'}, status=404)
     new_value = float(request.data.get('value', 0))
     changes, origins = cascade_update(node_id, new_value)
     return Response({
@@ -121,6 +132,8 @@ def apply_cascade(request, node_id):
 # ---------- API: загрузка CSV ----------
 @api_view(['POST'])
 def upload_csv(request):
+    if not request.user.is_authenticated:
+        return Response({'error': 'Authentication required'}, status=401)
     if 'file' not in request.FILES:
         return Response({'error': 'No file provided'}, status=status.HTTP_400_BAD_REQUEST)
     file = request.FILES['file']
@@ -184,7 +197,8 @@ def upload_csv(request):
         'row_count': len(df),
     })
 
-def run_causal_discovery(file_path, columns, algorithm, threshold, max_iter):
+# ---------- Асинхронная задача (с передачей пользователя) ----------
+def run_causal_discovery(file_path, columns, algorithm, threshold, max_iter, user):
     try:
         df = pd.read_csv(file_path)
         df_selected = df[columns].dropna()
@@ -213,7 +227,7 @@ def run_causal_discovery(file_path, columns, algorithm, threshold, max_iter):
             if algorithm == 'notears':
                 model = model_class(max_iter=max_iter)
             elif algorithm == 'golem':
-                model = model_class(num_iter=max_iter)  # ← ключевое отличие
+                model = model_class(num_iter=max_iter)
             else:
                 model = model_class()
         else:
@@ -235,7 +249,8 @@ def run_causal_discovery(file_path, columns, algorithm, threshold, max_iter):
                 y=random.randint(100, 500),
                 value=0,
                 transform_type='linear',
-                transform_formula=''
+                transform_formula='',
+                user=user  # привязываем к текущему пользователю
             )
             created_nodes.append(node)
         
@@ -247,18 +262,19 @@ def run_causal_discovery(file_path, columns, algorithm, threshold, max_iter):
                         Edge.objects.create(
                             source=created_nodes[i],
                             target=created_nodes[j],
-                            weight=round(weight, 3)
+                            weight=round(weight, 3),
+                            user=user  # привязываем связь к пользователю
                         )
         
-        nodes = Node.objects.all()
-        edges = Edge.objects.all()
+        nodes = Node.objects.filter(user=user)
+        edges = Edge.objects.filter(user=user)
         result = {
             'nodes': NodeSerializer(nodes, many=True).data,
             'edges': EdgeSerializer(edges, many=True).data,
         }
         # Сохраняем в кэш (на 1 час)
         cache_key = hashlib.md5(
-            f"{file_path}_{columns}_{algorithm}_{threshold}_{max_iter}".encode()
+            f"{file_path}_{columns}_{algorithm}_{threshold}_{max_iter}_{user.id}".encode()
         ).hexdigest()
         cache.set(cache_key, result, 3600)
         return result
@@ -276,13 +292,17 @@ def get_task_result(request, task_id):
     try:
         result = future.result()
         if isinstance(result, dict) and 'error' in result:
-            return Response({'status': 'error', 'error': result['error']}, status=200)  # ← 200 вместо 500
+            return Response({'status': 'error', 'error': result['error']}, status=200)
         return Response({'status': 'completed', 'result': result})
     except Exception as e:
-        return Response({'status': 'error', 'error': str(e)}, status=200)  # ← 200 вместо 500
+        return Response({'status': 'error', 'error': str(e)}, status=200)
+
 # ---------- API: автоматическое построение графа ----------
 @api_view(['POST'])
 def discover_graph(request):
+    if not request.user.is_authenticated:
+        return Response({'error': 'Authentication required'}, status=401)
+    
     columns = request.data.get('columns', [])
     if not columns or len(columns) < 2:
         return Response({'error': 'At least 2 numeric columns required'}, status=400)
@@ -300,17 +320,16 @@ def discover_graph(request):
     if not file_path or not os.path.exists(file_path):
         return Response({'error': 'No data uploaded. Please upload CSV first.'}, status=400)
     
-    # Генерируем ключ кэша
+    # Генерируем ключ кэша с учётом пользователя
     cache_key = hashlib.md5(
-        f"{file_path}_{columns}_{algorithm}_{threshold}_{max_iter}".encode()
+        f"{file_path}_{columns}_{algorithm}_{threshold}_{max_iter}_{request.user.id}".encode()
     ).hexdigest()
     
-    # Проверяем кэш
     cached_result = cache.get(cache_key)
     if cached_result:
-        return Response(cached_result)  # ← ИСПРАВЛЕНО
+        return Response(cached_result)
     
-    # Создаём задачу
+    # Создаём задачу, передаём пользователя
     task_id = str(uuid.uuid4())
     future = executor.submit(
         run_causal_discovery,
@@ -318,26 +337,31 @@ def discover_graph(request):
         columns,
         algorithm,
         threshold,
-        max_iter
+        max_iter,
+        request.user
     )
     task_store[task_id] = future
     return Response({'task_id': task_id, 'status': 'processing'})
 
-# ---------- CRUD для узлов ----------
+# ---------- CRUD для узлов (с проверкой владельца) ----------
 @api_view(['POST'])
 def create_node(request):
+    if not request.user.is_authenticated:
+        return Response({'error': 'Authentication required'}, status=401)
     serializer = NodeSerializer(data=request.data)
     if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        node = serializer.save(user=request.user)
+        return Response(NodeSerializer(node).data, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['PUT'])
 def update_node(request, node_id):
+    if not request.user.is_authenticated:
+        return Response({'error': 'Authentication required'}, status=401)
     try:
-        node = Node.objects.get(id=node_id)
+        node = Node.objects.get(id=node_id, user=request.user)
     except Node.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response({'error': 'Node not found or permission denied'}, status=404)
     serializer = NodeSerializer(node, data=request.data, partial=True)
     if serializer.is_valid():
         serializer.save()
@@ -346,28 +370,34 @@ def update_node(request, node_id):
 
 @api_view(['DELETE'])
 def delete_node(request, node_id):
+    if not request.user.is_authenticated:
+        return Response({'error': 'Authentication required'}, status=401)
     try:
-        node = Node.objects.get(id=node_id)
+        node = Node.objects.get(id=node_id, user=request.user)
     except Node.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response({'error': 'Node not found or permission denied'}, status=404)
     node.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
 
-# ---------- CRUD для связей ----------
+# ---------- CRUD для связей (с проверкой владельца) ----------
 @api_view(['POST'])
 def create_edge(request):
+    if not request.user.is_authenticated:
+        return Response({'error': 'Authentication required'}, status=401)
     serializer = EdgeSerializer(data=request.data)
     if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        edge = serializer.save(user=request.user)
+        return Response(EdgeSerializer(edge).data, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['PUT'])
 def update_edge(request, edge_id):
+    if not request.user.is_authenticated:
+        return Response({'error': 'Authentication required'}, status=401)
     try:
-        edge = Edge.objects.get(id=edge_id)
+        edge = Edge.objects.get(id=edge_id, user=request.user)
     except Edge.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response({'error': 'Edge not found or permission denied'}, status=404)
     new_weight = request.data.get('weight')
     if new_weight is None:
         return Response({'error': 'weight required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -381,20 +411,22 @@ def update_edge(request, edge_id):
 
 @api_view(['DELETE'])
 def delete_edge(request, edge_id):
+    if not request.user.is_authenticated:
+        return Response({'error': 'Authentication required'}, status=401)
     try:
-        edge = Edge.objects.get(id=edge_id)
+        edge = Edge.objects.get(id=edge_id, user=request.user)
     except Edge.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response({'error': 'Edge not found or permission denied'}, status=404)
     edge.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
 
-# ---------- СЦЕНАРИИ (с привязкой к пользователю) ----------
+# ---------- СЦЕНАРИИ (уже привязаны к пользователю) ----------
 @api_view(['GET'])
 def list_scenarios(request):
     if request.user.is_authenticated:
         scenarios = Scenario.objects.filter(user=request.user).order_by('-created_at')
     else:
-        scenarios = Scenario.objects.filter(user__isnull=True).order_by('-created_at')
+        scenarios = Scenario.objects.none()
     serializer = ScenarioSerializer(scenarios, many=True)
     return Response(serializer.data)
 
@@ -408,8 +440,8 @@ def save_scenario(request):
         return Response({'error': 'Name required'}, status=400)
     if Scenario.objects.filter(user=request.user, name=name).exists():
         return Response({'error': 'Scenario with this name already exists'}, status=400)
-    nodes = Node.objects.all()
-    edges = Edge.objects.all()
+    nodes = Node.objects.filter(user=request.user)
+    edges = Edge.objects.filter(user=request.user)
     data = {
         'nodes': NodeSerializer(nodes, many=True).data,
         'edges': EdgeSerializer(edges, many=True).data,
@@ -420,12 +452,12 @@ def save_scenario(request):
 
 @api_view(['PUT'])
 def update_scenario(request, scenario_id):
+    if not request.user.is_authenticated:
+        return Response({'error': 'Authentication required'}, status=401)
     try:
-        scenario = Scenario.objects.get(id=scenario_id)
+        scenario = Scenario.objects.get(id=scenario_id, user=request.user)
     except Scenario.DoesNotExist:
-        return Response(status=404)
-    if scenario.user != request.user:
-        return Response({'error': 'Permission denied'}, status=403)
+        return Response({'error': 'Scenario not found or permission denied'}, status=404)
     name = request.data.get('name')
     description = request.data.get('description')
     if name:
@@ -437,37 +469,39 @@ def update_scenario(request, scenario_id):
 
 @api_view(['DELETE'])
 def delete_scenario(request, scenario_id):
+    if not request.user.is_authenticated:
+        return Response({'error': 'Authentication required'}, status=401)
     try:
-        scenario = Scenario.objects.get(id=scenario_id)
+        scenario = Scenario.objects.get(id=scenario_id, user=request.user)
     except Scenario.DoesNotExist:
-        return Response(status=404)
-    if scenario.user != request.user:
-        return Response({'error': 'Permission denied'}, status=403)
+        return Response({'error': 'Scenario not found or permission denied'}, status=404)
     scenario.delete()
     return Response(status=204)
 
 @api_view(['POST'])
 def load_scenario(request, scenario_id):
+    if not request.user.is_authenticated:
+        return Response({'error': 'Authentication required'}, status=401)
     try:
-        scenario = Scenario.objects.get(id=scenario_id)
+        scenario = Scenario.objects.get(id=scenario_id, user=request.user)
     except Scenario.DoesNotExist:
-        return Response(status=404)
-    if scenario.user != request.user:
-        return Response({'error': 'Permission denied'}, status=403)
+        return Response({'error': 'Scenario not found or permission denied'}, status=404)
     data = scenario.data
-    Node.objects.all().delete()
-    Edge.objects.all().delete()
+    # Удаляем текущие узлы и связи пользователя
+    Node.objects.filter(user=request.user).delete()
+    Edge.objects.filter(user=request.user).delete()
     node_map = {}
     for node_data in data['nodes']:
         node = Node.objects.create(
-            id=node_data['id'],
+            id=node_data['id'],  # сохраняем id, чтобы связать с ребрами
             name=node_data['name'],
             color=node_data['color'],
             x=node_data['x'],
             y=node_data['y'],
             value=node_data['value'],
             transform_type=node_data.get('transform_type', 'linear'),
-            transform_formula=node_data.get('transform_formula', '')
+            transform_formula=node_data.get('transform_formula', ''),
+            user=request.user
         )
         node_map[node.id] = node
     for edge_data in data['edges']:
@@ -477,10 +511,11 @@ def load_scenario(request, scenario_id):
             Edge.objects.create(
                 source=source,
                 target=target,
-                weight=edge_data['weight']
+                weight=edge_data['weight'],
+                user=request.user
             )
-    nodes = Node.objects.all()
-    edges = Edge.objects.all()
+    nodes = Node.objects.filter(user=request.user)
+    edges = Edge.objects.filter(user=request.user)
     return Response({
         'nodes': NodeSerializer(nodes, many=True).data,
         'edges': EdgeSerializer(edges, many=True).data,
@@ -488,12 +523,12 @@ def load_scenario(request, scenario_id):
 
 @api_view(['GET'])
 def export_scenario(request, scenario_id):
+    if not request.user.is_authenticated:
+        return Response({'error': 'Authentication required'}, status=401)
     try:
-        scenario = Scenario.objects.get(id=scenario_id)
+        scenario = Scenario.objects.get(id=scenario_id, user=request.user)
     except Scenario.DoesNotExist:
-        return Response(status=404)
-    if scenario.user != request.user:
-        return Response({'error': 'Permission denied'}, status=403)
+        return Response({'error': 'Scenario not found or permission denied'}, status=404)
     return Response(scenario.data)
 
 @api_view(['POST'])
