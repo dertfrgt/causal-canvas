@@ -39,7 +39,7 @@ export function initCsvControls() {
                     table.style.width = '100%';
                     table.style.margin = '8px 0 15px';
                     table.style.fontSize = '13px';
-                    
+
                     const thead = document.createElement('thead');
                     const headerRow = document.createElement('tr');
                     data.columns.forEach(col => {
@@ -134,7 +134,7 @@ export function initCsvControls() {
                 });
                 settingsDiv.appendChild(document.createElement('br'));
 
-                // Максимальное число итераций (для градиентных методов)
+                // Максимальное число итераций
                 const iterLabel = document.createElement('label');
                 iterLabel.textContent = 'Макс. итераций (для NOTEARS/GOLEM):';
                 settingsDiv.appendChild(iterLabel);
@@ -163,7 +163,7 @@ export function initCsvControls() {
         fileInput.value = '';
     });
 
-    // ---------- Построение графа ----------
+    // ---------- Построение графа (асинхронное) ----------
     const buildBtn = document.getElementById('buildGraphBtn');
     if (buildBtn) {
         buildBtn.addEventListener('click', async () => {
@@ -204,6 +204,7 @@ export function initCsvControls() {
             document.body.appendChild(overlay);
 
             try {
+                // Отправляем запрос на построение
                 const resp = await fetch('/api/discover-graph/', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -215,26 +216,32 @@ export function initCsvControls() {
                     })
                 });
                 const data = await resp.json();
-                overlay.remove();
 
                 if (resp.ok) {
-                    state.nodes = data.nodes;
-                    state.edges = data.edges;
-                    state.ghostData = {};
-                    state.flashes = {};
-                    state.deltas = {};
-                    state.changedNodes = {};
-                    state.clickedNodeId = null;
-                    state.highlightAncestors = [];
-                    state.highlightDescendants = [];
-                    draw();
-                    alert(`✅ Граф построен с помощью ${algorithm.toUpperCase()} (порог ${threshold}, итераций ${maxIter})`);
+                    // Если результат уже есть (из кэша или синхронно)
+                    if (data.nodes && data.edges && Array.isArray(data.nodes) && Array.isArray(data.edges)) {
+    applyGraphResult(data);
+    overlay.remove();
+    alert(`✅ Граф построен (${algorithm.toUpperCase()})`);
+    return;
+}
+                    // Если задача запущена асинхронно
+                    if (data.status === 'processing' && data.task_id) {
+                        // Начинаем опрос статуса
+                        pollTask(data.task_id, overlay);
+                        return;
+                    }
+
+                    // Если что-то пошло не так
+                    overlay.remove();
+                    alert('Неизвестный ответ сервера: ' + JSON.stringify(data));
                 } else {
+                    overlay.remove();
                     alert('Ошибка: ' + JSON.stringify(data));
                 }
             } catch (err) {
                 overlay.remove();
-                alert('Ошибка: ' + err);
+                alert('Ошибка при отправке запроса: ' + err);
             }
         });
     }
@@ -247,4 +254,75 @@ export function initCsvControls() {
     modal.addEventListener('click', (e) => {
         if (e.target === modal) modal.style.display = 'none';
     });
+}
+
+// ---------- Вспомогательная функция: опрос статуса задачи ----------
+function pollTask(taskId, overlay) {
+    let attempts = 0;
+    const maxAttempts = 60; // 60 * 2с = 2 минуты
+
+    const interval = setInterval(async () => {
+        attempts++;
+        try {
+            const resp = await fetch(`/api/task/${taskId}/`);
+            if (!resp.ok) {
+                clearInterval(interval);
+                overlay.remove();
+                alert(`Ошибка получения статуса (${resp.status})`);
+                return;
+            }
+            const data = await resp.json();
+
+            if (data.status === 'completed') {
+    clearInterval(interval);
+    overlay.remove();
+    // Проверяем, что result существует и содержит массивы
+    if (data.result && Array.isArray(data.result.nodes) && Array.isArray(data.result.edges)) {
+        applyGraphResult(data.result);
+        alert('✅ Граф построен!');
+    } else {
+        alert('Ошибка: получен некорректный результат (нет nodes или edges)');
+        console.error('Некорректный результат:', data.result);
+    }
+}
+
+            else if (data.status === 'error') {
+                clearInterval(interval);
+                overlay.remove();
+                alert('Ошибка выполнения: ' + data.error);
+            } else if (data.status === 'processing') {
+                // Продолжаем ждать
+                // Можно обновлять сообщение о прогрессе, если есть
+                if (data.progress) {
+                    const progressMsg = document.querySelector('#loadingOverlay p:last-child');
+                    if (progressMsg) {
+                        progressMsg.textContent = `⏳ Выполняется... (${data.progress})`;
+                    }
+                }
+            } else if (attempts >= maxAttempts) {
+                clearInterval(interval);
+                overlay.remove();
+                alert('Превышено время ожидания (2 минуты). Попробуйте позже.');
+            }
+        } catch (err) {
+            clearInterval(interval);
+            overlay.remove();
+            alert('Ошибка при опросе статуса: ' + err);
+        }
+    }, 2000); // каждые 2 секунды
+}
+
+// ---------- Применение результата к графу ----------
+function applyGraphResult(result) {
+    // Защита: если result.nodes или result.edges не массивы, используем пустые массивы
+    state.nodes = Array.isArray(result?.nodes) ? result.nodes : [];
+    state.edges = Array.isArray(result?.edges) ? result.edges : [];
+    state.ghostData = {};
+    state.flashes = {};
+    state.deltas = {};
+    state.changedNodes = {};
+    state.clickedNodeId = null;
+    state.highlightAncestors = [];
+    state.highlightDescendants = [];
+    draw();
 }
