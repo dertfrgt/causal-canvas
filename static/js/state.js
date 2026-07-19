@@ -1,4 +1,3 @@
-// state.js
 export const state = {
     nodes: [],
     edges: [],
@@ -29,9 +28,10 @@ export const state = {
     highlightDescendants: [],
     clickedNodeId: null,
     spacePressed: false,
-};
 
-// Также экспортируем функции для обновления состояния (опционально)
-export function updateState(newState) {
-    Object.assign(state, newState);
-}
+    // ---------- НОВОЕ: Режим выделения ----------
+    selectionMode: false,           // включен ли режим выделения
+    selectedNodes: [],              // массив id выделенных узлов
+    selectionRect: null,            // { x1, y1, x2, y2 } в мировых координатах
+    isSelecting: false,            // идёт ли процесс выделения (для отрисовки)
+};

@@ -281,7 +281,40 @@ export function draw() {
     }
 
     ctx.restore();
+    // ---------- Прямоугольник выделения ----------
+if (state.isSelecting && state.selectionRect) {
+    const rect = state.selectionRect;
+    const x = Math.min(rect.x1, rect.x2);
+    const y = Math.min(rect.y1, rect.y2);
+    const w = Math.abs(rect.x2 - rect.x1);
+    const h = Math.abs(rect.y2 - rect.y1);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0, 120, 255, 0.8)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.strokeRect(x, y, w, h);
+    ctx.fillStyle = 'rgba(0, 120, 255, 0.1)';
+    ctx.fillRect(x, y, w, h);
+    ctx.restore();
+}
 
+// ---------- Подсветка выделенных узлов (если режим выделения включён) ----------
+if (state.selectionMode && state.selectedNodes.length > 0) {
+    for (let node of state.nodes) {
+        if (state.selectedNodes.includes(node.id)) {
+            const radius = Math.sqrt(node.value + 1) * 10;
+            ctx.save();
+            ctx.strokeStyle = '#ff4444';
+            ctx.lineWidth = 3;
+            ctx.shadowColor = 'rgba(255, 0, 0, 0.5)';
+            ctx.shadowBlur = 15;
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, radius + 4, 0, 2 * Math.PI);
+            ctx.stroke();
+            ctx.restore();
+        }
+    }
+}
     // ===== ПОДСКАЗКА ВНИЗУ =====
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
     ctx.font = '14px Arial';
