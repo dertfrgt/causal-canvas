@@ -270,12 +270,11 @@ def get_task_result(request, task_id):
         return Response({'status': 'processing'})
     try:
         result = future.result()
-        # Если результат содержит ошибку
         if isinstance(result, dict) and 'error' in result:
-            return Response({'status': 'error', 'error': result['error']}, status=500)
+            return Response({'status': 'error', 'error': result['error']}, status=200)  # ← 200 вместо 500
         return Response({'status': 'completed', 'result': result})
     except Exception as e:
-        return Response({'status': 'error', 'error': str(e)}, status=500)
+        return Response({'status': 'error', 'error': str(e)}, status=200)  # ← 200 вместо 500
 # ---------- API: автоматическое построение графа ----------
 @api_view(['POST'])
 def discover_graph(request):
