@@ -9,33 +9,63 @@ import { findAncestors, findDescendants } from './scenarios.js';
 export function initInteractions() {
     const canvas = document.getElementById('canvas');
 
+    // Локальные переменные для отслеживания состояния панорамирования
+    let isPanningCandidate = false;
+    let panStartMouseX = 0;
+    let panStartMouseY = 0;
+    let panStartOffsetX = 0;
+    let panStartOffsetY = 0;
+    let wasPanning = false; // чтобы отличить клик от панорамирования
+
     // ---------- Перетаскивание (только перемещение, БЕЗ изменения значения) ----------
     canvas.addEventListener('mousedown', (e) => {
-        if (state.spacePressed) {
-            state.isPanning = true;
-            const rect = canvas.getBoundingClientRect();
-            state.panStartX = e.clientX - rect.left;
-            state.panStartY = e.clientY - rect.top;
-            state.panOffsetX = state.offsetX;
-            state.panOffsetY = state.offsetY;
-            canvas.style.cursor = 'grabbing';
-            return;
-        }
         const rect = canvas.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
         const world = screenToWorld(mouseX, mouseY);
+
+        // Сброс флагов перед новым действием
+        wasPanning = false;
+
+        // 1. Проверяем, не зажат ли пробел (приоритет)
+        if (state.spacePressed) {
+            state.isPanning = true;
+            panStartMouseX = mouseX;
+            panStartMouseY = mouseY;
+            panStartOffsetX = state.offsetX;
+            panStartOffsetY = state.offsetY;
+            canvas.style.cursor = 'grabbing';
+            return;
+        }
+
+        // 2. Проверяем попадание в узел
+        let hitNode = null;
         for (let node of state.nodes) {
             const radius = Math.sqrt(node.value + 1) * 10;
-            const dx = world.x - node.x, dy = world.y - node.y;
+            const dx = world.x - node.x;
+            const dy = world.y - node.y;
             if (dx*dx + dy*dy <= radius*radius + 15) {
-                state.dragNode = node;
-                state.dragOffsetX = world.x - node.x;
-                state.dragOffsetY = world.y - node.y;
-                canvas.style.cursor = 'grabbing';
+                hitNode = node;
                 break;
             }
         }
+
+        if (hitNode) {
+            // Начинаем перетаскивание узла
+            state.dragNode = hitNode;
+            state.dragOffsetX = world.x - hitNode.x;
+            state.dragOffsetY = world.y - hitNode.y;
+            canvas.style.cursor = 'grabbing';
+            return;
+        }
+
+        // 3. Иначе — кандидат на панорамирование (по пустому месту)
+        isPanningCandidate = true;
+        panStartMouseX = mouseX;
+        panStartMouseY = mouseY;
+        panStartOffsetX = state.offsetX;
+        panStartOffsetY = state.offsetY;
+        canvas.style.cursor = 'grab';
     });
 
     canvas.addEventListener('mousemove', (e) => {
@@ -44,22 +74,22 @@ export function initInteractions() {
         const mouseY = e.clientY - rect.top;
         const world = screenToWorld(mouseX, mouseY);
 
+        // ---- 1. Обработка панорамирования по пробелу (если активно) ----
         if (state.isPanning && state.spacePressed) {
-            const dx = mouseX - state.panStartX;
-            const dy = mouseY - state.panStartY;
-            state.offsetX = state.panOffsetX + dx;
-            state.offsetY = state.panOffsetY + dy;
+            const dx = mouseX - panStartMouseX;
+            const dy = mouseY - panStartMouseY;
+            state.offsetX = panStartOffsetX + dx;
+            state.offsetY = panStartOffsetY + dy;
             localStorage.setItem('causal_offsetX', state.offsetX);
             localStorage.setItem('causal_offsetY', state.offsetY);
             draw();
             return;
         }
 
+        // ---- 2. Перетаскивание узла ----
         if (state.dragNode) {
-            // Перемещаем узел, НО НЕ МЕНЯЕМ ЕГО ЗНАЧЕНИЕ
             state.dragNode.x = Math.max(-500, Math.min(1500, world.x - state.dragOffsetX));
             state.dragNode.y = Math.max(-500, Math.min(1500, world.y - state.dragOffsetY));
-            // Если есть призрак – синхронизируем его координаты
             if (state.isSimulation && state.ghostData[state.dragNode.id]) {
                 state.ghostData[state.dragNode.id].oldX = state.dragNode.x;
                 state.ghostData[state.dragNode.id].oldY = state.dragNode.y;
@@ -68,7 +98,39 @@ export function initInteractions() {
             return;
         }
 
-        // Подсветка ребра
+        // ---- 3. Панорамирование по пустому месту (без пробела) ----
+        if (isPanningCandidate) {
+            const dx = mouseX - panStartMouseX;
+            const dy = mouseY - panStartMouseY;
+            // Начинаем панорамирование, только если сдвиг > 5px (чтобы не мешать кликам)
+            if (Math.sqrt(dx*dx + dy*dy) > 5) {
+                // Переключаемся в режим панорамирования
+                state.isPanning = true;
+                isPanningCandidate = false;
+                wasPanning = true;
+                // Обновляем начальные смещения, чтобы панорамирование было плавным
+                panStartOffsetX = state.offsetX;
+                panStartOffsetY = state.offsetY;
+                panStartMouseX = mouseX;
+                panStartMouseY = mouseY;
+                canvas.style.cursor = 'grabbing';
+                // Не выходим, продолжаем движение
+            }
+        }
+
+        if (state.isPanning && !state.spacePressed) {
+            // Панорамирование без пробела
+            const dx = mouseX - panStartMouseX;
+            const dy = mouseY - panStartMouseY;
+            state.offsetX = panStartOffsetX + dx;
+            state.offsetY = panStartOffsetY + dy;
+            localStorage.setItem('causal_offsetX', state.offsetX);
+            localStorage.setItem('causal_offsetY', state.offsetY);
+            draw();
+            return;
+        }
+
+        // ---- 4. Подсветка ребра (если ничего не перетаскивается) ----
         let foundEdge = null;
         for (let edge of state.edges) {
             const src = state.nodes.find(n => n.id === edge.source);
@@ -86,11 +148,12 @@ export function initInteractions() {
             draw();
         }
 
-        // Подсказка для узла
+        // ---- 5. Подсказка для узла ----
         let foundNode = null;
         for (let node of state.nodes) {
             const radius = Math.sqrt(node.value + 1) * 10;
-            const dx = world.x - node.x, dy = world.y - node.y;
+            const dx = world.x - node.x;
+            const dy = world.y - node.y;
             if (dx*dx + dy*dy <= radius*radius + 15) {
                 foundNode = node;
                 break;
@@ -103,8 +166,8 @@ export function initInteractions() {
     });
 
     canvas.addEventListener('mouseup', async (e) => {
+        // ---- 1. Завершение перетаскивания узла ----
         if (state.dragNode) {
-            // Сохраняем только координаты, значение НЕ МЕНЯЕМ
             const node = state.dragNode;
             try {
                 await fetch(`/api/node/${node.id}/`, {
@@ -119,23 +182,33 @@ export function initInteractions() {
             canvas.style.cursor = 'default';
             draw();
         }
+
+        // ---- 2. Завершение панорамирования ----
         if (state.isPanning) {
             state.isPanning = false;
+            isPanningCandidate = false;
+            canvas.style.cursor = 'default';
+            draw();
+        } else {
+            // Если не было панорамирования, сбрасываем кандидата
+            isPanningCandidate = false;
             canvas.style.cursor = 'default';
         }
     });
 
     canvas.addEventListener('mouseleave', () => {
+        // Сброс всех состояний при уходе мыши с холста
         if (state.dragNode) {
             state.dragNode = null;
-            canvas.style.cursor = 'default';
             draw();
         }
         if (state.isPanning) {
             state.isPanning = false;
-            canvas.style.cursor = 'default';
+            isPanningCandidate = false;
+            draw();
         }
         state.tooltipNode = null;
+        canvas.style.cursor = 'default';
         draw();
     });
 
@@ -157,7 +230,7 @@ export function initInteractions() {
         draw();
     }, { passive: false });
 
-    // ---------- Пробел для панорамирования ----------
+    // ---------- Пробел для панорамирования (альтернативный способ) ----------
     document.addEventListener('keydown', (e) => {
         if (e.key === ' ' || e.key === 'Space') {
             e.preventDefault();
@@ -170,7 +243,11 @@ export function initInteractions() {
             e.preventDefault();
             state.spacePressed = false;
             canvas.style.cursor = 'default';
-            if (state.isPanning) state.isPanning = false;
+            if (state.isPanning) {
+                state.isPanning = false;
+                isPanningCandidate = false;
+                draw();
+            }
         }
     });
 
@@ -183,7 +260,8 @@ export function initInteractions() {
         let hitNode = null;
         for (let node of state.nodes) {
             const radius = Math.sqrt(node.value + 1) * 10;
-            const dx = world.x - node.x, dy = world.y - node.y;
+            const dx = world.x - node.x;
+            const dy = world.y - node.y;
             if (dx*dx + dy*dy <= radius*radius + 15) {
                 hitNode = node;
                 break;
@@ -197,7 +275,6 @@ export function initInteractions() {
             document.getElementById('modalNodeValue').value = '';
             document.getElementById('modalTransformType').value = hitNode.transform_type || 'linear';
             document.getElementById('modalFormula').value = hitNode.transform_formula || '';
-            // Показать/скрыть поле формулы
             const type = document.getElementById('modalTransformType').value;
             document.getElementById('formulaField').style.display = (type === 'custom') ? 'block' : 'none';
             document.getElementById('valueSection').style.display = state.isSimulation ? 'block' : 'none';
@@ -238,6 +315,11 @@ export function initInteractions() {
 
     // ---------- Клик для выбора источника связи (конструктор) ----------
     canvas.addEventListener('click', (e) => {
+        // Если было панорамирование — игнорируем клик
+        if (wasPanning) {
+            wasPanning = false;
+            return;
+        }
         if (state.isSimulation) return;
         const rect = canvas.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
@@ -247,7 +329,8 @@ export function initInteractions() {
         if (!state.edgeSourceNode) {
             for (let node of state.nodes) {
                 const radius = Math.sqrt(node.value + 1) * 10;
-                const dx = world.x - node.x, dy = world.y - node.y;
+                const dx = world.x - node.x;
+                const dy = world.y - node.y;
                 if (dx*dx + dy*dy <= radius*radius + 15) {
                     state.edgeSourceNode = node;
                     draw();
@@ -257,7 +340,8 @@ export function initInteractions() {
         } else {
             for (let node of state.nodes) {
                 const radius = Math.sqrt(node.value + 1) * 10;
-                const dx = world.x - node.x, dy = world.y - node.y;
+                const dx = world.x - node.x;
+                const dy = world.y - node.y;
                 if (dx*dx + dy*dy <= radius*radius + 15) {
                     if (node.id === state.edgeSourceNode.id) {
                         state.edgeSourceNode = null;
@@ -286,7 +370,8 @@ export function initInteractions() {
 
         for (let node of state.nodes) {
             const radius = Math.sqrt(node.value + 1) * 10;
-            const dx = world.x - node.x, dy = world.y - node.y;
+            const dx = world.x - node.x;
+            const dy = world.y - node.y;
             if (dx*dx + dy*dy <= radius*radius + 15) {
                 if (confirm(`Удалить узел "${node.name}" и все связанные рёбра?`)) {
                     deleteNode(node.id);
@@ -311,6 +396,11 @@ export function initInteractions() {
 
     // ---------- Клик по узлу для цепочки (только симуляция) ----------
     canvas.addEventListener('click', (e) => {
+        // Если было панорамирование — игнорируем клик
+        if (wasPanning) {
+            wasPanning = false;
+            return;
+        }
         if (!state.isSimulation) return;
         const rect = canvas.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
@@ -319,7 +409,8 @@ export function initInteractions() {
         let hitNode = null;
         for (let node of state.nodes) {
             const radius = Math.sqrt(node.value + 1) * 10;
-            const dx = world.x - node.x, dy = world.y - node.y;
+            const dx = world.x - node.x;
+            const dy = world.y - node.y;
             if (dx*dx + dy*dy <= radius*radius + 15) {
                 hitNode = node;
                 break;
