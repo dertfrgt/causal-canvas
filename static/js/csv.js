@@ -1,6 +1,32 @@
 import { state } from './state.js';
 import { draw } from './draw.js';
 
+// ---------- Вспомогательная функция для получения CSRF-токена ----------
+function getCSRFToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.getAttribute('content') : '';
+}
+
+// ---------- Вспомогательная функция для fetch с CSRF ----------
+async function fetchWithCSRF(url, options = {}) {
+    const csrfToken = getCSRFToken();
+    const headers = options.headers || {};
+    // Добавляем CSRF-токен в заголовки для методов, изменяющих состояние
+    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(options.method?.toUpperCase())) {
+        headers['X-CSRFToken'] = csrfToken;
+    }
+    // Устанавливаем Content-Type, если не передан
+    if (!headers['Content-Type'] && !(options.body instanceof FormData)) {
+        headers['Content-Type'] = 'application/json';
+    }
+    const config = {
+        ...options,
+        headers: headers,
+        credentials: 'include', // важно для отправки cookies
+    };
+    return fetch(url, config);
+}
+
 export function initCsvControls() {
     const uploadBtn = document.getElementById('uploadCsvBtn');
     const fileInput = document.getElementById('csvFileInput');
@@ -22,9 +48,10 @@ export function initCsvControls() {
         formData.append('file', file);
 
         try {
-            const resp = await fetch('/api/upload-csv/', {
+            const resp = await fetchWithCSRF('/api/upload-csv/', {
                 method: 'POST',
-                body: formData
+                body: formData,
+                // не устанавливаем Content-Type, браузер сам установит для FormData
             });
             const data = await resp.json();
             if (resp.ok) {
@@ -204,8 +231,7 @@ export function initCsvControls() {
             document.body.appendChild(overlay);
 
             try {
-                // Отправляем запрос на построение
-                const resp = await fetch('/api/discover-graph/', {
+                const resp = await fetchWithCSRF('/api/discover-graph/', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -219,20 +245,19 @@ export function initCsvControls() {
 
                 if (resp.ok) {
                     // Если результат уже есть (из кэша или синхронно)
-                    if (data.nodes && data.edges && Array.isArray(data.nodes) && Array.isArray(data.edges)) {
-    applyGraphResult(data);
-    overlay.remove();
-    alert(`✅ Граф построен (${algorithm.toUpperCase()})`);
-    return;
-}
+                    if (data.nodes && data.edges) {
+                        applyGraphResult(data);
+                        overlay.remove();
+                        alert(`✅ Граф построен (${algorithm.toUpperCase()})`);
+                        return;
+                    }
+
                     // Если задача запущена асинхронно
                     if (data.status === 'processing' && data.task_id) {
-                        // Начинаем опрос статуса
                         pollTask(data.task_id, overlay);
                         return;
                     }
 
-                    // Если что-то пошло не так
                     overlay.remove();
                     alert('Неизвестный ответ сервера: ' + JSON.stringify(data));
                 } else {
@@ -259,12 +284,15 @@ export function initCsvControls() {
 // ---------- Вспомогательная функция: опрос статуса задачи ----------
 function pollTask(taskId, overlay) {
     let attempts = 0;
-    const maxAttempts = 60; // 60 * 2с = 2 минуты
+    const maxAttempts = 60;
 
     const interval = setInterval(async () => {
         attempts++;
         try {
-            const resp = await fetch(`/api/task/${taskId}/`);
+            const resp = await fetchWithCSRF(`/api/task/${taskId}/`, {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' }
+            });
             if (!resp.ok) {
                 clearInterval(interval);
                 overlay.remove();
@@ -274,25 +302,15 @@ function pollTask(taskId, overlay) {
             const data = await resp.json();
 
             if (data.status === 'completed') {
-    clearInterval(interval);
-    overlay.remove();
-    // Проверяем, что result существует и содержит массивы
-    if (data.result && Array.isArray(data.result.nodes) && Array.isArray(data.result.edges)) {
-        applyGraphResult(data.result);
-        alert('✅ Граф построен!');
-    } else {
-        alert('Ошибка: получен некорректный результат (нет nodes или edges)');
-        console.error('Некорректный результат:', data.result);
-    }
-}
-
-            else if (data.status === 'error') {
+                clearInterval(interval);
+                overlay.remove();
+                applyGraphResult(data.result);
+                alert('✅ Граф построен!');
+            } else if (data.status === 'error') {
                 clearInterval(interval);
                 overlay.remove();
                 alert('Ошибка выполнения: ' + data.error);
             } else if (data.status === 'processing') {
-                // Продолжаем ждать
-                // Можно обновлять сообщение о прогрессе, если есть
                 if (data.progress) {
                     const progressMsg = document.querySelector('#loadingOverlay p:last-child');
                     if (progressMsg) {
@@ -309,14 +327,13 @@ function pollTask(taskId, overlay) {
             overlay.remove();
             alert('Ошибка при опросе статуса: ' + err);
         }
-    }, 2000); // каждые 2 секунды
+    }, 2000);
 }
 
 // ---------- Применение результата к графу ----------
 function applyGraphResult(result) {
-    // Защита: если result.nodes или result.edges не массивы, используем пустые массивы
-    state.nodes = Array.isArray(result?.nodes) ? result.nodes : [];
-    state.edges = Array.isArray(result?.edges) ? result.edges : [];
+    state.nodes = result.nodes;
+    state.edges = result.edges;
     state.ghostData = {};
     state.flashes = {};
     state.deltas = {};
