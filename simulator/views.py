@@ -209,8 +209,13 @@ def run_causal_discovery(file_path, columns, algorithm, threshold, max_iter):
         if model_class is None:
             return {'error': f'Algorithm {algorithm} not implemented'}
         
-        if max_iter is not None and algorithm in ['notears', 'golem']:
-            model = model_class(max_iter=max_iter)
+        if max_iter is not None:
+            if algorithm == 'notears':
+                model = model_class(max_iter=max_iter)
+            elif algorithm == 'golem':
+                model = model_class(num_iter=max_iter)  # ← ключевое отличие
+            else:
+                model = model_class()
         else:
             model = model_class()
         
